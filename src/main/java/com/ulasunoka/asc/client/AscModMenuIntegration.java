@@ -164,6 +164,16 @@ public class AscModMenuIntegration implements ModMenuApi {
         public boolean onCharTyped(char chr, String key, int modifiers) {
             return this.button.charTyped(chr, modifiers);
         }
+
+        @Override
+        public void setFocused(boolean focused) {
+            this.button.setFocused(focused);
+        }
+
+        @Override
+        public boolean isFocused() {
+            return this.button.isFocused();
+        }
     }
 
     /**
