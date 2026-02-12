@@ -35,14 +35,14 @@ public class AscModMenuIntegration implements ModMenuApi {
     };
 
     @Override
-    public ConfigScreenFactory << ? > getModConfigScreenFactory() {
-        return parent - > {
+    public ConfigScreenFactory<?> getModConfigScreenFactory() {
+        return parent -> {
             MinecraftClient client = MinecraftClient.getInstance();
             boolean hasWorld = client.world != null;
 
             ConfigBuilder builder = ConfigBuilder.create()
-            .setParentScreen(parent)
-            .setTitle(Text.of("ASC Config"));
+                    .setParentScreen(parent)
+                    .setTitle(Text.of("ASC Config"));
 
             AscConfig config = AscConfig.get();
             ConfigEntryBuilder entryBuilder = builder.entryBuilder();
@@ -56,74 +56,77 @@ public class AscModMenuIntegration implements ModMenuApi {
                 ).build());
             }
 
-            // List of Rules
-            general.addEntry(entryBuilder.startObjectList Text.of("Rules"),
-                config.rules
-            )
-            .setDefaultValue(new AscConfig.SlotRule())
-            .setExpanded(true)
-            .setRenderer((rule, rulesListEntry) - > {
-                var innerEntries = new ArrayList < me.shedaniel.clothconfig2.api.AbstractConfigListEntry > ();
+            // List of Rules using startObjectList for proper object handling
+            general.addEntry(entryBuilder.startObjectList(Text.of("Rules"), config.rules)
+                .setDefaultValue(new AscConfig.SlotRule())
+                .setExpanded(true)
+                .setRenderer((rule, rulesListEntry) -> {
+                    var innerEntries = new ArrayList<me.shedaniel.clothconfig2.api.AbstractConfigListEntry>();
 
-                // 1. Item ID (Registry Autocomplete)
-                innerEntries.add(entryBuilder.startStrField(Text.of("Item ID"), rule.itemId)
-                    .setDefaultValue("minecraft:stick")
-                    .setTooltip(Text.of("§7Example: minecraft:diamond"))
-                    .setSuggestionProvider(() - >
-                        Registries.ITEM.getIds().stream()
-                        .map(Identifier::toString)
-                        .toArray(String[]::new)
-                    )
-                    .setSaveConsumer(s - > rule.itemId = s)
-                    .build());
+                    // 1. Item ID (Registry Autocomplete)
+                    innerEntries.add(entryBuilder.startStrField(Text.of("Item ID"), rule.itemId)
+                        .setDefaultValue("minecraft:stick")
+                        .setTooltip(Text.of("§7Example: minecraft:diamond"))
+                        .setSuggestionProvider(() -> 
+                            Registries.ITEM.getIds().stream()
+                                .map(Identifier::toString)
+                                .toArray(String[]::new)
+                        )
+                        .setSaveConsumer(s -> rule.itemId = s)
+                        .build());
 
-                // 2. Target Slots (API Autocomplete)
-                innerEntries.add(entryBuilder.startStrList(Text.of("Target Slots"), rule.targetSlots)
-                    .setTooltip(hasWorld ?
-                        Text.of("§7Available slots from loaded world") :
-                        Text.of("§e⚠ Limited list (join world for full list)")
-                    )
-                    .setSuggestionProvider(() - > getAvailableSlots(client))
-                    .setSaveConsumer(l - > rule.targetSlots = l)
-                    .build());
+                    // 2. Target Slots (API Autocomplete)
+                    innerEntries.add(entryBuilder.startStrList(Text.of("Target Slots"), rule.targetSlots)
+                        .setTooltip(hasWorld ? 
+                            Text.of("§7Available slots from loaded world") : 
+                            Text.of("§e⚠ Limited list (join world for full list)")
+                        )
+                        .setSuggestionProvider(() -> getAvailableSlots(client))
+                        .setSaveConsumer(l -> rule.targetSlots = l)
+                        .build());
 
-                // 3. Operation Mode
-                innerEntries.add(entryBuilder.startEnumSelector(
-                        Text.of("Mode"),
-                        AscConfig.SlotRule.OperationMode.class,
-                        rule.mode
-                    )
-                    .setTooltip(Text.of("§7MERGE: Adds slots\n§7REPLACE: Overrides slots"))
-                    .setSaveConsumer(m - > rule.mode = m)
-                    .build());
+                    // 3. Operation Mode
+                    innerEntries.add(entryBuilder.startEnumSelector(
+                            Text.of("Mode"), 
+                            AscConfig.SlotRule.OperationMode.class, 
+                            rule.mode
+                        )
+                        .setTooltip(Text.of("§7MERGE: Adds slots\n§7REPLACE: Overrides slots"))
+                        .setSaveConsumer(m -> rule.mode = m)
+                        .build());
 
-                // Return collapsible sub-category
-                return entryBuilder.startSubCategory(
-                    Text.literal(rule.itemId.isEmpty() ? "§7New Rule" : rule.itemId),
-                    innerEntries
-                ).build();
-            })
-            .build());
+                    // Return collapsible sub-category for better UX
+                    return entryBuilder.startSubCategory(
+                        Text.literal(rule.itemId.isEmpty() ? "§7New Rule" : rule.itemId),
+                        innerEntries
+                    ).build();
+                })
+                .build());
 
-        return builder.setSavingRunnable(() - > {
-            AutoConfig.getConfigHolder(AscConfig.class).save();
-            AscConfig.updateCache(); // Update runtime map immediately
-            LOGGER.info("[ASC] Config saved and cache updated");
-        }).build();
-    };
-}
-
-private String[] getAvailableSlots(MinecraftClient client) {
-    try {
-        if (client.world != null) {
-            var slots = AccessoriesAPI.getSlotTypes(client.world);
-            if (slots != null && !slots.isEmpty()) {
-                return slots.keySet().toArray(String[]::new);
-            }
-        }
-    } catch (Exception e) {
-        LOGGER.error("Failed to fetch slots from Accessories API", e);
+            return builder.setSavingRunnable(() -> {
+                AutoConfig.getConfigHolder(AscConfig.class).save();
+                AscConfig.updateCache(); // Update runtime map immediately
+                LOGGER.info("[ASC] Config saved and cache updated");
+            }).build();
+        };
     }
-    return FALLBACK_SLOTS;
-}
+
+    /**
+     * Attempts to fetch available slot types from Accessories API.
+     * Uses fallback list if world context is missing.
+     */
+    private String[] getAvailableSlots(MinecraftClient client) {
+        try {
+            if (client.world != null) {
+                // Corrected method name for Accessories 1.21.1
+                var slots = AccessoriesAPI.getSlotTypes(client.world);
+                if (slots != null && !slots.isEmpty()) {
+                    return slots.keySet().toArray(String[]::new);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("[ASC] Failed to fetch slots from Accessories API", e);
+        }
+        return FALLBACK_SLOTS;
+    }
 }
