@@ -57,11 +57,12 @@ public class AscModMenuIntegration implements ModMenuApi {
                 ).build());
             }
 
-            // Explicitly cast to help compiler match the method signature in Cloth Config 15
-            List<AscConfig.SlotRule> ruleList = config.rules;
+            // Explicitly cast to help compiler match method signature in Cloth Config 15
+            List<AscConfig.SlotRule> rules = config.rules;
 
-            // List of Rules using startObjectList for proper object handling
-            general.addEntry(entryBuilder.startObjectList(Text.of("Rules"), ruleList, new AscConfig.SlotRule())
+            // startObjectList(Text, List) is the correct 2-arg signature for v15
+            general.addEntry(entryBuilder.startObjectList(Text.of("Rules"), rules)
+                .setDefaultValue(new AscConfig.SlotRule()) // Required for "Add" button logic
                 .setExpanded(true)
                 .setRenderer((rule, rulesListEntry) -> {
                     var innerEntries = new ArrayList<me.shedaniel.clothconfig2.api.AbstractConfigListEntry>();
@@ -108,7 +109,7 @@ public class AscModMenuIntegration implements ModMenuApi {
 
             return builder.setSavingRunnable(() -> {
                 AutoConfig.getConfigHolder(AscConfig.class).save();
-                AscConfig.updateCache(); // Update runtime map immediately
+                AscConfig.updateCache(); // Rebuild runtime map for immediate effect
                 LOGGER.info("[ASC] Config saved and cache updated");
             }).build();
         };
@@ -121,13 +122,14 @@ public class AscModMenuIntegration implements ModMenuApi {
     private String[] getAvailableSlots(MinecraftClient client) {
         try {
             if (client.world != null) {
-                // Fixed: Accessories 1.21.1 requires RegistryManager
-                var slots = AccessoriesAPI.getSlotDefinitions(client.world.getRegistryManager());
+                // getSlotTypes(RegistryManager) is the correct call for Accessories 1.21.1
+                var slots = AccessoriesAPI.getSlotTypes(client.world.getRegistryManager());
                 if (slots != null && !slots.isEmpty()) {
                     return slots.keySet().toArray(String[]::new);
                 }
             }
         } catch (Exception e) {
+            // Debug info for API changes or missing registries
             LOGGER.error("[ASC] Failed to fetch slots from Accessories API", e);
         }
         return FALLBACK_SLOTS;
