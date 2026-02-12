@@ -11,10 +11,12 @@ import dev.isxander.yacl3.api.YetAnotherConfigLib;
 import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
 import dev.isxander.yacl3.api.controller.EnumDropdownControllerBuilder;
 import dev.isxander.yacl3.api.utils.Dimension;
+import dev.isxander.yacl3.gui.AbstractWidget;
 import dev.isxander.yacl3.gui.LowProfileButtonWidget;
 import dev.isxander.yacl3.gui.YACLScreen;
 import io.wispforest.accessories.data.SlotTypeLoader;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
@@ -112,6 +114,59 @@ public class AscModMenuIntegration implements ModMenuApi {
     }
 
     /**
+     * Wraps a vanilla ButtonWidget into a YACL AbstractWidget.
+     */
+    private static final class ButtonWrapperWidget extends AbstractWidget {
+
+        private final net.minecraft.client.gui.widget.ClickableWidget button;
+
+        private ButtonWrapperWidget(Dimension<Integer> dim, net.minecraft.client.gui.widget.ClickableWidget button) {
+            super(dim);
+            this.button = button;
+        }
+
+        @Override
+        public void setDimension(Dimension<Integer> dim) {
+            super.setDimension(dim);
+            // Keep underlying button in sync with YACL layout
+            this.button.setX(dim.x());
+            this.button.setY(dim.y());
+            this.button.setWidth(dim.width());
+            this.button.setHeight(dim.height());
+        }
+
+        @Override
+        public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+            this.button.render(context, mouseX, mouseY, delta);
+        }
+
+        @Override
+        public boolean onMouseClicked(double mouseX, double mouseY, int button) {
+            return this.button.mouseClicked(mouseX, mouseY, button);
+        }
+
+        @Override
+        public boolean onMouseReleased(double mouseX, double mouseY, int button) {
+            return this.button.mouseReleased(mouseX, mouseY, button);
+        }
+
+        @Override
+        public boolean onMouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+            return this.button.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        }
+
+        @Override
+        public boolean onKeyPressed(int keyCode, int scanCode, int modifiers) {
+            return this.button.keyPressed(keyCode, scanCode, modifiers);
+        }
+
+        @Override
+        public boolean onCharTyped(char chr, String key, int modifiers) {
+            return this.button.charTyped(chr, modifiers);
+        }
+    }
+
+    /**
      * Controller for ListOption entries of SlotRule.
      * Renders each rule as a clickable button and opens an editor screen.
      */
@@ -140,12 +195,13 @@ public class AscModMenuIntegration implements ModMenuApi {
         }
 
         @Override
-        public dev.isxander.yacl3.gui.AbstractWidget provideWidget(YACLScreen screen, Dimension<Integer> dim) {
-            return new LowProfileButtonWidget(
+        public AbstractWidget provideWidget(YACLScreen screen, Dimension<Integer> dim) {
+            LowProfileButtonWidget button = new LowProfileButtonWidget(
                     dim.x(), dim.y(), dim.width(), dim.height(),
                     Text.literal("Edit: ").append(formatValue()),
                     btn -> MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(screen))
             );
+            return new ButtonWrapperWidget(dim, button);
         }
 
         private Screen buildRuleEditorScreen(Screen previousScreen) {

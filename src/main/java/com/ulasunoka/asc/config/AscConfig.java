@@ -15,7 +15,7 @@ import java.util.Map;
 public class AscConfig {
 
     public static final ConfigClassHandler<AscConfig> HANDLER = ConfigClassHandler.createBuilder(AscConfig.class)
-            .id(new Identifier("asc", "config"))
+            .id(Identifier.of("asc", "config"))
             .serializer(config -> GsonConfigSerializerBuilder.create(config)
                     .setPath(FabricLoader.getInstance().getConfigDir().resolve("asc.json5"))
                     .appendGsonBuilder(GsonBuilder::setPrettyPrinting)
