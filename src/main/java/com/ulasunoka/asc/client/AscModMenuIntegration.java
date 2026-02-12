@@ -15,12 +15,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class AscModMenuIntegration implements ModMenuApi {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("asc-integration");
 
-    // Fallback list used when world is not loaded (Accessories API might crash or return empty)
+    // Fallback list used when world is not loaded (Accessories API needs registry context)
     private static final String[] FALLBACK_SLOTS = {
         "head",
         "necklace",
@@ -56,8 +57,11 @@ public class AscModMenuIntegration implements ModMenuApi {
                 ).build());
             }
 
-            // Fixed: Added third argument (new SlotRule) directly to startObjectList
-            general.addEntry(entryBuilder.startObjectList(Text.of("Rules"), config.rules, new AscConfig.SlotRule())
+            // Explicitly cast to help compiler match the method signature in Cloth Config 15
+            List<AscConfig.SlotRule> ruleList = config.rules;
+
+            // List of Rules using startObjectList for proper object handling
+            general.addEntry(entryBuilder.startObjectList(Text.of("Rules"), ruleList, new AscConfig.SlotRule())
                 .setExpanded(true)
                 .setRenderer((rule, rulesListEntry) -> {
                     var innerEntries = new ArrayList<me.shedaniel.clothconfig2.api.AbstractConfigListEntry>();
@@ -112,13 +116,13 @@ public class AscModMenuIntegration implements ModMenuApi {
 
     /**
      * Attempts to fetch available slot types from Accessories API.
-     * Uses fallback list if world context is missing.
+     * Uses RegistryManager context which is required in 1.21.x.
      */
     private String[] getAvailableSlots(MinecraftClient client) {
         try {
             if (client.world != null) {
-                // Fixed: Method renamed to getSlotDefinitions in 1.21.x
-                var slots = AccessoriesAPI.getSlotDefinitions(client.world);
+                // Fixed: Accessories 1.21.1 requires RegistryManager
+                var slots = AccessoriesAPI.getSlotDefinitions(client.world.getRegistryManager());
                 if (slots != null && !slots.isEmpty()) {
                     return slots.keySet().toArray(String[]::new);
                 }
