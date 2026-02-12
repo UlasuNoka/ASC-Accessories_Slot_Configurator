@@ -56,9 +56,8 @@ public class AscModMenuIntegration implements ModMenuApi {
                 ).build());
             }
 
-            // List of Rules using startObjectList for proper object handling
-            general.addEntry(entryBuilder.startObjectList(Text.of("Rules"), config.rules)
-                .setDefaultValue(new AscConfig.SlotRule())
+            // Fixed: Added third argument (new SlotRule) directly to startObjectList
+            general.addEntry(entryBuilder.startObjectList(Text.of("Rules"), config.rules, new AscConfig.SlotRule())
                 .setExpanded(true)
                 .setRenderer((rule, rulesListEntry) -> {
                     var innerEntries = new ArrayList<me.shedaniel.clothconfig2.api.AbstractConfigListEntry>();
@@ -118,8 +117,8 @@ public class AscModMenuIntegration implements ModMenuApi {
     private String[] getAvailableSlots(MinecraftClient client) {
         try {
             if (client.world != null) {
-                // Corrected method name for Accessories 1.21.1
-                var slots = AccessoriesAPI.getSlotTypes(client.world);
+                // Fixed: Method renamed to getSlotDefinitions in 1.21.x
+                var slots = AccessoriesAPI.getSlotDefinitions(client.world);
                 if (slots != null && !slots.isEmpty()) {
                     return slots.keySet().toArray(String[]::new);
                 }
