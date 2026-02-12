@@ -60,9 +60,8 @@ public class AscModMenuIntegration implements ModMenuApi {
             // Explicitly cast to help compiler match method signature in Cloth Config 15
             List<AscConfig.SlotRule> rules = config.rules;
 
-            // startObjectList(Text, List) is the correct 2-arg signature for v15
-            general.addEntry(entryBuilder.startObjectList(Text.of("Rules"), rules)
-                .setDefaultValue(new AscConfig.SlotRule()) // Required for "Add" button logic
+            // startObjectList requires 3 args in v15: title, list, and a default object
+            general.addEntry(entryBuilder.<AscConfig.SlotRule>startObjectList(Text.of("Rules"), rules, new AscConfig.SlotRule())
                 .setExpanded(true)
                 .setRenderer((rule, rulesListEntry) -> {
                     var innerEntries = new ArrayList<me.shedaniel.clothconfig2.api.AbstractConfigListEntry>();
