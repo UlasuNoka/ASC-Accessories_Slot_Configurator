@@ -3,18 +3,26 @@ package com.ulasunoka.asc.client;
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
 import com.ulasunoka.asc.config.AscConfig;
-import io.wispforest.accessories.api.AccessoriesAPI;
-import me.shedaniel.autoconfig.AutoConfig;
-import me.shedaniel.clothconfig2.api.ConfigBuilder;
-import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
+import dev.isxander.yacl3.api.ConfigCategory;
+import dev.isxander.yacl3.api.ListOption;
+import dev.isxander.yacl3.api.Option;
+import dev.isxander.yacl3.api.OptionDescription;
+import dev.isxander.yacl3.api.YetAnotherConfigLib;
+import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
+import dev.isxander.yacl3.api.controller.EnumDropdownControllerBuilder;
+import dev.isxander.yacl3.api.utils.Dimension;
+import dev.isxander.yacl3.gui.LowProfileButtonWidget;
+import dev.isxander.yacl3.gui.YACLScreen;
+import io.wispforest.accessories.data.SlotTypeLoader;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class AscModMenuIntegration implements ModMenuApi {
@@ -37,100 +45,192 @@ public class AscModMenuIntegration implements ModMenuApi {
 
     @Override
     public ConfigScreenFactory<?> getModConfigScreenFactory() {
-        return parent -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            boolean hasWorld = client.world != null;
+        return parent -> buildMainScreen(parent);
+    }
 
-            ConfigBuilder builder = ConfigBuilder.create()
-                    .setParentScreen(parent)
-                    .setTitle(Text.of("ASC Config"));
+    private Screen buildMainScreen(Screen parent) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        boolean hasWorld = client.world != null;
 
-            AscConfig config = AscConfig.get();
-            ConfigEntryBuilder entryBuilder = builder.entryBuilder();
+        return YetAnotherConfigLib.create(AscConfig.HANDLER, (defaults, config, builder) -> {
+            builder.title(Text.of("ASC Config"));
 
-            var general = builder.getOrCreateCategory(Text.of("General"));
+            var categoryBuilder = ConfigCategory.createBuilder()
+                    .name(Text.of("General"));
 
             // Warning if accessed from Main Menu
             if (!hasWorld) {
-                general.addEntry(entryBuilder.startTextDescription(
-                    Text.of("§e⚠ WARNING: §rYou are not in a world!\nSlot suggestions are limited.")
-                ).build());
+                categoryBuilder.option(dev.isxander.yacl3.api.LabelOption.create(
+                        Text.of("§e⚠ WARNING: §rYou are not in a world!\nSlot suggestions are limited.")
+                ));
             }
 
-            // Explicitly cast to help compiler match method signature in Cloth Config 15
-            List<AscConfig.SlotRule> rules = config.rules;
+            // Dynamic list of SlotRule
+            ListOption<AscConfig.SlotRule> rulesOption = ListOption.<AscConfig.SlotRule>createBuilder(AscConfig.SlotRule.class)
+                    .name(Text.of("Rules"))
+                    .description(OptionDescription.of(Text.of("Add, remove and edit slot rules dynamically.")))
+                    .binding(
+                            defaults.rules,
+                            () -> config.rules,
+                            v -> config.rules = v
+                    )
+                    .initial(AscConfig.SlotRule::new)
+                    // Each list entry is rendered as a button which opens a dedicated editor screen
+                    .customController(entry -> new SlotRuleEntryController(entry, parent, hasWorld))
+                    .build();
 
-            // startObjectList requires 3 args in v15: title, list, and a default object
-            general.addEntry(entryBuilder.<AscConfig.SlotRule>startObjectList(Text.of("Rules"), rules, new AscConfig.SlotRule())
-                .setExpanded(true)
-                .setRenderer((rule, rulesListEntry) -> {
-                    var innerEntries = new ArrayList<me.shedaniel.clothconfig2.api.AbstractConfigListEntry>();
+            categoryBuilder.group(rulesOption);
 
-                    // 1. Item ID (Registry Autocomplete)
-                    innerEntries.add(entryBuilder.startStrField(Text.of("Item ID"), rule.itemId)
-                        .setDefaultValue("minecraft:stick")
-                        .setTooltip(Text.of("§7Example: minecraft:diamond"))
-                        .setSuggestionProvider(() -> 
-                            Registries.ITEM.getIds().stream()
-                                .map(Identifier::toString)
-                                .toArray(String[]::new)
-                        )
-                        .setSaveConsumer(s -> rule.itemId = s)
-                        .build());
+            builder.category(categoryBuilder.build());
 
-                    // 2. Target Slots (API Autocomplete)
-                    innerEntries.add(entryBuilder.startStrList(Text.of("Target Slots"), rule.targetSlots)
-                        .setTooltip(hasWorld ? 
-                            Text.of("§7Available slots from loaded world") : 
-                            Text.of("§e⚠ Limited list (join world for full list)")
-                        )
-                        .setSuggestionProvider(() -> getAvailableSlots(client))
-                        .setSaveConsumer(l -> rule.targetSlots = l)
-                        .build());
-
-                    // 3. Operation Mode
-                    innerEntries.add(entryBuilder.startEnumSelector(
-                            Text.of("Mode"), 
-                            AscConfig.SlotRule.OperationMode.class, 
-                            rule.mode
-                        )
-                        .setTooltip(Text.of("§7MERGE: Adds slots\n§7REPLACE: Overrides slots"))
-                        .setSaveConsumer(m -> rule.mode = m)
-                        .build());
-
-                    // Return collapsible sub-category for better UX
-                    return entryBuilder.startSubCategory(
-                        Text.literal(rule.itemId.isEmpty() ? "§7New Rule" : rule.itemId),
-                        innerEntries
-                    ).build();
-                })
-                .build());
-
-            return builder.setSavingRunnable(() -> {
-                AutoConfig.getConfigHolder(AscConfig.class).save();
-                AscConfig.updateCache(); // Rebuild runtime map for immediate effect
+            builder.save(() -> {
+                AscConfig.save();
+                AscConfig.updateCache();
                 LOGGER.info("[ASC] Config saved and cache updated");
-            }).build();
-        };
+            });
+
+            return builder;
+        }).generateScreen(parent);
     }
 
     /**
      * Attempts to fetch available slot types from Accessories API.
      * Uses RegistryManager context which is required in 1.21.x.
      */
-    private String[] getAvailableSlots(MinecraftClient client) {
+    private static String[] getAvailableSlots(MinecraftClient client) {
         try {
             if (client.world != null) {
-                // getSlotTypes(RegistryManager) is the correct call for Accessories 1.21.1
-                var slots = AccessoriesAPI.getSlotTypes(client.world.getRegistryManager());
+                var slots = SlotTypeLoader.getSlotTypes(client.world);
                 if (slots != null && !slots.isEmpty()) {
                     return slots.keySet().toArray(String[]::new);
                 }
             }
         } catch (Exception e) {
-            // Debug info for API changes or missing registries
             LOGGER.error("[ASC] Failed to fetch slots from Accessories API", e);
         }
         return FALLBACK_SLOTS;
+    }
+
+    /**
+     * Controller for ListOption entries of SlotRule.
+     * Renders each rule as a clickable button and opens an editor screen.
+     */
+    private static final class SlotRuleEntryController implements dev.isxander.yacl3.api.Controller<AscConfig.SlotRule> {
+
+        private final dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry;
+        private final Screen parent;
+        private final boolean hasWorld;
+
+        private SlotRuleEntryController(dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry, Screen parent, boolean hasWorld) {
+            this.entry = entry;
+            this.parent = parent;
+            this.hasWorld = hasWorld;
+        }
+
+        @Override
+        public Option<AscConfig.SlotRule> option() {
+            return entry;
+        }
+
+        @Override
+        public Text formatValue() {
+            AscConfig.SlotRule rule = entry.pendingValue();
+            if (rule == null || rule.itemId == null || rule.itemId.isEmpty()) return Text.of("New Rule");
+            return Text.of(rule.itemId);
+        }
+
+        @Override
+        public dev.isxander.yacl3.gui.AbstractWidget provideWidget(YACLScreen screen, Dimension<Integer> dim) {
+            return new LowProfileButtonWidget(
+                    dim.x(), dim.y(), dim.width(), dim.height(),
+                    Text.literal("Edit: ").append(formatValue()),
+                    btn -> MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(screen))
+            );
+        }
+
+        private Screen buildRuleEditorScreen(Screen previousScreen) {
+            MinecraftClient client = MinecraftClient.getInstance();
+
+            // Ensure we always edit the *pending* rule instance
+            AscConfig.SlotRule rule = entry.pendingValue();
+            if (rule == null) {
+                rule = new AscConfig.SlotRule();
+                entry.requestSet(rule);
+            }
+
+            final AscConfig.SlotRule workingRule = rule;
+
+            return YetAnotherConfigLib.createBuilder()
+                    .title(Text.of("Edit Rule"))
+                    .category(ConfigCategory.createBuilder()
+                            .name(Text.of("Rule"))
+                            .option(Option.<String>createBuilder()
+                                    .name(Text.of("Item ID"))
+                                    .description(OptionDescription.of(Text.of("Example: minecraft:diamond")))
+
+                                    .binding(
+                                            "minecraft:stick",
+                                            () -> workingRule.itemId,
+                                            v -> {
+                                                workingRule.itemId = v;
+                                                entry.requestSet(workingRule);
+                                            }
+                                    )
+                                    .controller(opt -> DropdownStringControllerBuilder.create(opt)
+                                            .values(Registries.ITEM.getIds().stream().map(Identifier::toString).toList())
+                                            .allowAnyValue(true)
+                                            .allowEmptyValue(false)
+                                    )
+                                    .build()
+                            )
+
+                            .group(ListOption.<String>createBuilder(String.class)
+                                    .name(Text.of("Target Slots"))
+                                    .description(OptionDescription.of(
+                                            hasWorld
+                                                    ? Text.of("Available slots from loaded world")
+                                                    : Text.of("⚠ Limited list (join world for full list)")
+                                    ))
+                                    .binding(
+                                            List.of(),
+                                            () -> workingRule.targetSlots,
+                                            v -> {
+                                                workingRule.targetSlots = v;
+                                                entry.requestSet(workingRule);
+                                            }
+                                    )
+                                    .initial(() -> "")
+                                    .controller(opt -> DropdownStringControllerBuilder.create(opt)
+                                            .values(Arrays.asList(getAvailableSlots(client)))
+                                            .allowAnyValue(true)
+                                            .allowEmptyValue(false)
+                                    )
+                                    .build()
+                            )
+
+                            .option(Option.<AscConfig.SlotRule.OperationMode>createBuilder(AscConfig.SlotRule.OperationMode.class)
+                                    .name(Text.of("Mode"))
+                                    .description(OptionDescription.of(Text.of("MERGE: Adds slots\nREPLACE: Overrides slots")))
+                                    .binding(
+                                            AscConfig.SlotRule.OperationMode.MERGE,
+                                            () -> workingRule.mode,
+                                            v -> {
+                                                workingRule.mode = v;
+                                                entry.requestSet(workingRule);
+                                            }
+                                    )
+                                    .controller(EnumDropdownControllerBuilder::create)
+                                    .build()
+                            )
+
+                            .build()
+                    )
+                    .save(() -> {
+                        // Save only the list entry pending value; actual config saving happens on the main screen "Done"
+                        entry.requestSet(workingRule);
+                    })
+                    .build()
+                    .generateScreen(previousScreen);
+        }
     }
 }

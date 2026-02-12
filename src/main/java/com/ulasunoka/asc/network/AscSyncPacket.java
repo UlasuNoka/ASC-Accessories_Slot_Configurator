@@ -18,7 +18,7 @@ public class AscSyncPacket {
     // Data payload definition for Fabric Networking API (1.21.1)
     public record SyncPayload(String configJson) implements CustomPayload {
         public static final CustomPayload.Id<SyncPayload> ID = new CustomPayload.Id<>(PACKET_ID);
-        
+
         public static final PacketCodec<RegistryByteBuf, SyncPayload> CODEC = PacketCodec.of(
             (value, buf) -> buf.writeString(value.configJson),
             buf -> new SyncPayload(buf.readString())
@@ -31,17 +31,17 @@ public class AscSyncPacket {
     }
 
     public static class Server {
-        
+
         public static void init() {
             // Register packet type for S2C communication
             PayloadTypeRegistry.playS2C().register(SyncPayload.ID, SyncPayload.CODEC);
-            
+
             // Send server config to player on join to prevent desync
             net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register(
                 (handler, sender, server) -> {
                     String configJson = GSON.toJson(AscConfig.get());
                     ServerPlayNetworking.send(handler.player, new SyncPayload(configJson));
-                    
+
                     // Debug log to confirm sync attempt
                     // System.out.println("[ASC] Sent config to " + handler.player.getName().getString());
                 }
@@ -50,7 +50,7 @@ public class AscSyncPacket {
     }
 
     public static class Client {
-        
+
         public static void init() {
             // Register receiver on client side
             ClientPlayNetworking.registerGlobalReceiver(SyncPayload.ID, (payload, context) -> {
@@ -58,18 +58,18 @@ public class AscSyncPacket {
                     try {
                         // Parse received JSON
                         AscConfig receivedConfig = GSON.fromJson(payload.configJson(), AscConfig.class);
-                        
+
                         // CRITICAL: Update ONLY the runtime cache, do not overwrite local config file
                         // This ensures server rules apply without messing up client settings
                         AscConfig.RULE_CACHE.clear();
-                        if (receivedConfig.rules != null) {
+                        if (receivedConfig != null && receivedConfig.rules != null) {
                             for (AscConfig.SlotRule rule : receivedConfig.rules) {
                                 AscConfig.RULE_CACHE.put(rule.itemId, rule);
                             }
                         }
-                        
+
                         // System.out.println("[ASC] Synced " + receivedConfig.rules.size() + " rules from server");
-                        
+
                     } catch (Exception e) {
                         System.err.println("[ASC] Failed to sync config: " + e.getMessage());
                         e.printStackTrace();

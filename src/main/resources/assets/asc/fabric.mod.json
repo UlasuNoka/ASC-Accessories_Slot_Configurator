@@ -13,9 +13,7 @@
   },
   "license": "MIT",
   "icon": "assets/asc/icon.png",
-  
   "environment": "*",
-  
   "entrypoints": {
     "main": [
       "com.ulasunoka.asc.AscMod"
@@ -27,26 +25,25 @@
       "com.ulasunoka.asc.client.AscModMenuIntegration"
     ]
   },
-  
   "mixins": [
     "asc.mixins.json"
   ],
-  
   "depends": {
     "fabricloader": ">=0.18.4",
     "minecraft": "~1.21.1",
     "java": ">=21",
     "fabric-api": ">=0.116.8+1.21.1",
-    "accessories": ">=1.1.0-beta.53+1.21.1"
+    "accessories": ">=1.1.0-beta.53+1.21.1",
+    "yet_another_config_lib_v3": "*"
   },
-  
   "suggests": {
     "modmenu": "*"
   },
-  
   "custom": {
     "modmenu": {
-      "badges": [ "library" ],
+      "badges": [
+        "library"
+      ],
       "update_checker": false
     }
   }
