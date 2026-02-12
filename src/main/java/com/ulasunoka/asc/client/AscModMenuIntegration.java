@@ -8,8 +8,8 @@ import dev.isxander.yacl3.api.ListOption;
 import dev.isxander.yacl3.api.Option;
 import dev.isxander.yacl3.api.OptionDescription;
 import dev.isxander.yacl3.api.YetAnotherConfigLib;
+import dev.isxander.yacl3.api.controller.BooleanControllerBuilder;
 import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
-import dev.isxander.yacl3.api.controller.EnumDropdownControllerBuilder;
 import dev.isxander.yacl3.api.utils.Dimension;
 import dev.isxander.yacl3.gui.AbstractWidget;
 import dev.isxander.yacl3.gui.LowProfileButtonWidget;
@@ -18,6 +18,8 @@ import io.wispforest.accessories.data.SlotTypeLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -26,6 +28,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+
 
 public class AscModMenuIntegration implements ModMenuApi {
 
@@ -176,6 +180,76 @@ public class AscModMenuIntegration implements ModMenuApi {
         }
     }
 
+    private static final class IconButtonWrapperWidget extends AbstractWidget {
+
+        private final net.minecraft.client.gui.widget.ClickableWidget button;
+        private final java.util.function.Supplier<ItemStack> iconSupplier;
+
+        private IconButtonWrapperWidget(Dimension<Integer> dim,
+                                        net.minecraft.client.gui.widget.ClickableWidget button,
+                                        java.util.function.Supplier<ItemStack> iconSupplier) {
+            super(dim);
+            this.button = button;
+            this.iconSupplier = iconSupplier;
+        }
+
+        @Override
+        public void setDimension(Dimension<Integer> dim) {
+            super.setDimension(dim);
+            this.button.setX(dim.x());
+            this.button.setY(dim.y());
+            this.button.setWidth(dim.width());
+            this.button.setHeight(dim.height());
+        }
+
+        @Override
+        public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+            this.button.render(context, mouseX, mouseY, delta);
+
+            ItemStack stack = iconSupplier.get();
+            if (!stack.isEmpty()) {
+                int iconX = this.dimension.x() + 6;
+                int iconY = this.dimension.y() + (this.dimension.height() - 16) / 2;
+                context.drawItem(stack, iconX, iconY);
+            }
+        }
+
+        @Override
+        public boolean onMouseClicked(double mouseX, double mouseY, int button) {
+            return this.button.mouseClicked(mouseX, mouseY, button);
+        }
+
+        @Override
+        public boolean onMouseReleased(double mouseX, double mouseY, int button) {
+            return this.button.mouseReleased(mouseX, mouseY, button);
+        }
+
+        @Override
+        public boolean onMouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+            return this.button.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        }
+
+        @Override
+        public boolean onKeyPressed(int keyCode, int scanCode, int modifiers) {
+            return this.button.keyPressed(keyCode, scanCode, modifiers);
+        }
+
+        @Override
+        public boolean onCharTyped(char chr, String key, int modifiers) {
+            return this.button.charTyped(chr, modifiers);
+        }
+
+        @Override
+        public boolean isFocused() {
+            return this.button.isFocused();
+        }
+
+        @Override
+        public void setFocused(boolean focused) {
+            this.button.setFocused(focused);
+        }
+    }
+
     /**
      * Controller for ListOption entries of SlotRule.
      * Renders each rule as a clickable button and opens an editor screen.
@@ -200,8 +274,18 @@ public class AscModMenuIntegration implements ModMenuApi {
         @Override
         public Text formatValue() {
             AscConfig.SlotRule rule = entry.pendingValue();
-            if (rule == null || rule.itemId == null || rule.itemId.isEmpty()) return Text.of("New Rule");
-            return Text.of(rule.itemId);
+            if (rule == null || rule.itemId == null || rule.itemId.isEmpty()) {
+                return Text.of("New Rule");
+            }
+
+            Optional<Text> itemName = resolveItemName(rule.itemId);
+            if (itemName.isEmpty()) {
+                return Text.of(rule.itemId);
+            }
+
+            return Text.literal("")
+                    .append(itemName.get())
+                    .append(Text.literal(" (" + rule.itemId + ")"));
         }
 
         @Override
@@ -211,9 +295,39 @@ public class AscModMenuIntegration implements ModMenuApi {
                     Text.literal("Edit: ").append(formatValue()),
                     btn -> MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(screen))
             );
-            return new ButtonWrapperWidget(dim, button);
+            return new IconButtonWrapperWidget(dim, button, this::resolveEntryItemStack);
         }
 
+        private ItemStack resolveEntryItemStack() {
+            AscConfig.SlotRule rule = entry.pendingValue();
+            if (rule == null || rule.itemId == null || rule.itemId.isBlank()) {
+                return ItemStack.EMPTY;
+            }
+
+            return parseIdentifier(rule.itemId)
+                    .flatMap(id -> Registries.ITEM.getOrEmpty(id))
+                    .map(ItemStack::new)
+                    .orElse(ItemStack.EMPTY);
+        }
+
+        private Optional<Text> resolveItemName(String itemId) {
+            if (itemId == null || itemId.isBlank()) {
+                return Optional.empty();
+            }
+
+            return parseIdentifier(itemId)
+                    .flatMap(id -> Registries.ITEM.getOrEmpty(id))
+                    .map(Item::getName);
+        }
+
+
+        private Optional<Identifier> parseIdentifier(String value) {
+            if (value == null || value.isBlank()) {
+                return Optional.empty();
+            }
+
+            return Optional.ofNullable(Identifier.tryParse(value));
+        }
         private Screen buildRuleEditorScreen(Screen previousScreen) {
             MinecraftClient client = MinecraftClient.getInstance();
 
@@ -230,6 +344,10 @@ public class AscModMenuIntegration implements ModMenuApi {
                     .title(Text.of("Edit Rule"))
                     .category(ConfigCategory.createBuilder()
                             .name(Text.of("Rule"))
+                            .option(dev.isxander.yacl3.api.ButtonOption.createBuilder()
+                                    .name(Text.of("← Back to rules"))
+                                    .action((screen, button) -> MinecraftClient.getInstance().setScreen(previousScreen))
+                                    .build())
                             .option(Option.<String>createBuilder()
                                     .name(Text.of("Item ID"))
                                     .description(OptionDescription.of(Text.of("Example: minecraft:diamond")))
@@ -274,18 +392,20 @@ public class AscModMenuIntegration implements ModMenuApi {
                                     .build()
                             )
 
-                            .option(Option.<AscConfig.SlotRule.OperationMode>createBuilder(AscConfig.SlotRule.OperationMode.class)
+                            .option(Option.<Boolean>createBuilder()
                                     .name(Text.of("Mode"))
-                                    .description(OptionDescription.of(Text.of("MERGE: Adds slots\nREPLACE: Overrides slots")))
+                                    .description(OptionDescription.of(Text.of("Disabled = MERGE, Enabled = REPLACE")))
                                     .binding(
-                                            AscConfig.SlotRule.OperationMode.MERGE,
-                                            () -> workingRule.mode,
+                                            false,
+                                            () -> workingRule.mode == AscConfig.SlotRule.OperationMode.REPLACE,
                                             v -> {
-                                                workingRule.mode = v;
+                                                workingRule.mode = v
+                                                        ? AscConfig.SlotRule.OperationMode.REPLACE
+                                                        : AscConfig.SlotRule.OperationMode.MERGE;
                                                 entry.requestSet(workingRule);
                                             }
                                     )
-                                    .controller(EnumDropdownControllerBuilder::create)
+                                    .controller(BooleanControllerBuilder::create)
                                     .build()
                             )
 
