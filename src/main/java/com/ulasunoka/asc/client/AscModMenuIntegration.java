@@ -184,6 +184,7 @@ public class AscModMenuIntegration implements ModMenuApi {
 
         private final net.minecraft.client.gui.widget.ClickableWidget button;
         private final java.util.function.Supplier<ItemStack> iconSupplier;
+        private Dimension<Integer> currentDimension;
 
         private IconButtonWrapperWidget(Dimension<Integer> dim,
                                         net.minecraft.client.gui.widget.ClickableWidget button,
@@ -191,11 +192,13 @@ public class AscModMenuIntegration implements ModMenuApi {
             super(dim);
             this.button = button;
             this.iconSupplier = iconSupplier;
+            this.currentDimension = dim;
         }
 
         @Override
         public void setDimension(Dimension<Integer> dim) {
             super.setDimension(dim);
+            this.currentDimension = dim;
             this.button.setX(dim.x());
             this.button.setY(dim.y());
             this.button.setWidth(dim.width());
@@ -208,8 +211,8 @@ public class AscModMenuIntegration implements ModMenuApi {
 
             ItemStack stack = iconSupplier.get();
             if (!stack.isEmpty()) {
-                int iconX = this.dimension.x() + 6;
-                int iconY = this.dimension.y() + (this.dimension.height() - 16) / 2;
+                int iconX = this.currentDimension.x() + 6;
+                int iconY = this.currentDimension.y() + (this.currentDimension.height() - 16) / 2;
                 context.drawItem(stack, iconX, iconY);
             }
         }
@@ -278,7 +281,7 @@ public class AscModMenuIntegration implements ModMenuApi {
 
             String itemId = rule.itemId;
             return resolveItemName(itemId)
-                    .map(name -> Text.literal(itemId + " (").append(name).append(")"))
+                    .<Text>map(name -> Text.literal(itemId + " (").append(name).append(")"))
                     .orElse(Text.of(itemId));
         }
 
