@@ -9,7 +9,8 @@ import dev.isxander.yacl3.api.Option;
 import dev.isxander.yacl3.api.OptionDescription;
 import dev.isxander.yacl3.api.YetAnotherConfigLib;
 import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
-import dev.isxander.yacl3.api.controller.EnumDropdownControllerBuilder;
+import dev.isxander.yacl3.api.controller.CyclingListControllerBuilder;
+import dev.isxander.yacl3.api.controller.ItemControllerBuilder;
 import dev.isxander.yacl3.api.utils.Dimension;
 import dev.isxander.yacl3.gui.AbstractWidget;
 import dev.isxander.yacl3.gui.LowProfileButtonWidget;
@@ -20,6 +21,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -49,7 +51,7 @@ public class AscModMenuIntegration implements ModMenuApi {
         "feet"
     };
 
-    private static final String CUSTOM_SLOT_VALUE = "custom";
+    private static final String CUSTOM_SLOT_VALUE = "★ Custom...";
 
 
     @Override
@@ -328,10 +330,9 @@ public class AscModMenuIntegration implements ModMenuApi {
         }
 
         private List<String> getSlotChoices(MinecraftClient client) {
-            java.util.ArrayList<String> values = new java.util.ArrayList<>(Arrays.stream(getAvailableSlots(client)).sorted().toList());
-            if (!values.contains(CUSTOM_SLOT_VALUE)) {
-                values.add(CUSTOM_SLOT_VALUE);
-            }
+            java.util.ArrayList<String> values = new java.util.ArrayList<>();
+            values.add(CUSTOM_SLOT_VALUE);
+            values.addAll(Arrays.stream(getAvailableSlots(client)).sorted().toList());
             return values;
         }
 
@@ -383,23 +384,20 @@ public class AscModMenuIntegration implements ModMenuApi {
                     .title(Text.of("Edit Rule"))
                     .category(ConfigCategory.createBuilder()
                             .name(Text.of("Rule"))
-                            .option(Option.<String>createBuilder()
-                                    .name(Text.of("Item ID"))
-                                    .description(OptionDescription.of(Text.of("Example: minecraft:diamond")))
-
+                            .option(Option.<Item>createBuilder(Item.class)
+                                    .name(Text.of("Item"))
+                                    .description(OptionDescription.of(Text.of("Select an item with icon and localized name")))
                                     .binding(
-                                            "minecraft:stick",
-                                            () -> workingRule.itemId,
+                                            Items.STICK,
+                                            () -> parseIdentifier(workingRule.itemId)
+                                                    .flatMap(id -> Registries.ITEM.getOrEmpty(id))
+                                                    .orElse(Items.STICK),
                                             v -> {
-                                                workingRule.itemId = v;
+                                                workingRule.itemId = Registries.ITEM.getId(v).toString();
                                                 entry.requestSet(workingRule);
                                             }
                                     )
-                                    .controller(opt -> DropdownStringControllerBuilder.create(opt)
-                                            .values(Registries.ITEM.getIds().stream().map(Identifier::toString).toList())
-                                            .allowAnyValue(true)
-                                            .allowEmptyValue(false)
-                                    )
+                                    .controller(ItemControllerBuilder::create)
                                     .build()
                             )
 
@@ -428,7 +426,7 @@ public class AscModMenuIntegration implements ModMenuApi {
 
                             .option(Option.<String>createBuilder()
                                     .name(Text.of("Custom Target Slot"))
-                                    .description(OptionDescription.of(Text.of("Used only when Target Slot = custom")))
+                                    .description(OptionDescription.of(Text.of("Used only when Target Slot = ★ Custom...")))
                                     .binding(
                                             "",
                                             () -> getCustomSlotValue(workingRule, client),
@@ -449,8 +447,7 @@ public class AscModMenuIntegration implements ModMenuApi {
 
                             .option(Option.<AscConfig.SlotRule.OperationMode>createBuilder(AscConfig.SlotRule.OperationMode.class)
                                     .name(Text.of("Mode"))
-                                    .description(OptionDescription.of(Text.of("MERGE: Adds slots
-REPLACE: Overrides slots")))
+                                    .description(OptionDescription.of(Text.of("Cycle between MERGE and REPLACE")))
                                     .binding(
                                             AscConfig.SlotRule.OperationMode.MERGE,
                                             () -> workingRule.mode,
@@ -459,7 +456,11 @@ REPLACE: Overrides slots")))
                                                 entry.requestSet(workingRule);
                                             }
                                     )
-                                    .controller(EnumDropdownControllerBuilder::create)
+                                    .controller(opt -> CyclingListControllerBuilder.create(opt)
+                                            .values(List.of(
+                                                    AscConfig.SlotRule.OperationMode.MERGE,
+                                                    AscConfig.SlotRule.OperationMode.REPLACE
+                                            )))
                                     .build()
                             )
 
