@@ -377,6 +377,9 @@ public class AscModMenuIntegration implements ModMenuApi {
             }
 
             final AscConfig.SlotRule workingRule = rule;
+            if (workingRule.mode == null) {
+                workingRule.mode = AscConfig.SlotRule.OperationMode.MERGE;
+            }
 
             return YetAnotherConfigLib.createBuilder()
                     .title(Text.of("Edit Rule"))
@@ -450,7 +453,9 @@ public class AscModMenuIntegration implements ModMenuApi {
                                     .description(OptionDescription.of(Text.of("Cycle between MERGE and REPLACE")))
                                     .binding(
                                             AscConfig.SlotRule.OperationMode.MERGE,
-                                            () -> workingRule.mode,
+                                            () -> workingRule.mode == null
+                                                    ? AscConfig.SlotRule.OperationMode.MERGE
+                                                    : workingRule.mode,
                                             v -> {
                                                 workingRule.mode = v;
                                                 entry.requestSet(workingRule);
@@ -460,7 +465,8 @@ public class AscModMenuIntegration implements ModMenuApi {
                                             .values(List.of(
                                                     AscConfig.SlotRule.OperationMode.MERGE,
                                                     AscConfig.SlotRule.OperationMode.REPLACE
-                                            )))
+                                            ))
+                                            .valueFormatter(mode -> Text.literal(mode.name())))
                                     .build()
                             )
 
