@@ -4,6 +4,7 @@ import me.fzzyhmstrs.fzzy_config.api.ConfigApiJava;
 import me.fzzyhmstrs.fzzy_config.api.RegisterType;
 import me.fzzyhmstrs.fzzy_config.config.Config;
 import me.fzzyhmstrs.fzzy_config.config.ConfigSection;
+import me.fzzyhmstrs.fzzy_config.event.api.ServerUpdateContext;
 import me.fzzyhmstrs.fzzy_config.screen.decoration.Decorated;
 import me.fzzyhmstrs.fzzy_config.util.AllowableStrings;
 import me.fzzyhmstrs.fzzy_config.util.Translatable;
@@ -31,7 +32,7 @@ import java.util.Map;
 
 public class AscConfig extends Config {
 
-    private static final String[] FALLBACK_SLOTS = {
+    private static final String[] SLOT_LIST = {
             "head",
             "necklace",
             "back",
@@ -44,7 +45,7 @@ public class AscConfig extends Config {
             "feet"
     };
 
-    private static final List<String> FALLBACK_SLOT_LIST = List.of(FALLBACK_SLOTS);
+    private static final List<String> SLOT_VALUES = List.of(SLOT_LIST);
 
     private static AscConfig INSTANCE;
 
@@ -65,6 +66,24 @@ public class AscConfig extends Config {
             load();
         }
         return INSTANCE;
+    }
+
+    @Override
+    public void onUpdateClient() {
+        super.onUpdateClient();
+        updateCache();
+    }
+
+    @Override
+    public void onSyncClient() {
+        super.onSyncClient();
+        updateCache();
+    }
+
+    @Override
+    public void onUpdateServer(ServerUpdateContext context) {
+        super.onUpdateServer(context);
+        updateCache();
     }
 
     public static void updateCache() {
@@ -121,7 +140,7 @@ public class AscConfig extends Config {
         private final SlotRule owner;
 
         private DynamicSlotString(SlotRule owner) {
-            super("head", new AllowableStrings(FALLBACK_SLOT_LIST::contains, () -> FALLBACK_SLOT_LIST));
+            super("head", new AllowableStrings(SLOT_VALUES::contains, () -> SLOT_VALUES));
             this.owner = owner;
         }
 
