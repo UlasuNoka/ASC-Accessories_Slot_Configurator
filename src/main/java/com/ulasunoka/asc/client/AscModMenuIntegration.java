@@ -8,8 +8,8 @@ import dev.isxander.yacl3.api.ListOption;
 import dev.isxander.yacl3.api.Option;
 import dev.isxander.yacl3.api.OptionDescription;
 import dev.isxander.yacl3.api.YetAnotherConfigLib;
-import dev.isxander.yacl3.api.controller.BooleanControllerBuilder;
 import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
+import dev.isxander.yacl3.api.controller.EnumDropdownControllerBuilder;
 import dev.isxander.yacl3.api.utils.Dimension;
 import dev.isxander.yacl3.gui.AbstractWidget;
 import dev.isxander.yacl3.gui.LowProfileButtonWidget;
@@ -49,6 +49,9 @@ public class AscModMenuIntegration implements ModMenuApi {
         "feet"
     };
 
+    private static final String CUSTOM_SLOT_VALUE = "custom";
+
+
     @Override
     public ConfigScreenFactory<?> getModConfigScreenFactory() {
         return parent -> buildMainScreen(parent);
@@ -82,7 +85,7 @@ public class AscModMenuIntegration implements ModMenuApi {
                     )
                     .initial(AscConfig.SlotRule::new)
                     // Each list entry is rendered as a button which opens a dedicated editor screen
-                    .customController(entry -> new SlotRuleEntryController(entry, parent, hasWorld))
+                    .customController(entry -> new SlotRuleEntryController(entry, hasWorld))
                     .build();
 
             categoryBuilder.group(rulesOption);
@@ -260,12 +263,10 @@ public class AscModMenuIntegration implements ModMenuApi {
     private static final class SlotRuleEntryController implements dev.isxander.yacl3.api.Controller<AscConfig.SlotRule> {
 
         private final dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry;
-        private final Screen parent;
         private final boolean hasWorld;
 
-        private SlotRuleEntryController(dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry, Screen parent, boolean hasWorld) {
+        private SlotRuleEntryController(dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry, boolean hasWorld) {
             this.entry = entry;
-            this.parent = parent;
             this.hasWorld = hasWorld;
         }
 
@@ -289,7 +290,7 @@ public class AscModMenuIntegration implements ModMenuApi {
         public AbstractWidget provideWidget(YACLScreen screen, Dimension<Integer> dim) {
             LowProfileButtonWidget button = new LowProfileButtonWidget(
                     dim.x(), dim.y(), dim.width(), dim.height(),
-                    Text.literal("Edit: ").append(formatValue()),
+                    formatValue(),
                     btn -> MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(screen))
             );
             return new IconButtonWrapperWidget(dim, button, this::resolveEntryItemStack);
@@ -325,6 +326,47 @@ public class AscModMenuIntegration implements ModMenuApi {
 
             return Optional.ofNullable(Identifier.tryParse(value));
         }
+
+        private List<String> getSlotChoices(MinecraftClient client) {
+            java.util.ArrayList<String> values = new java.util.ArrayList<>(Arrays.stream(getAvailableSlots(client)).sorted().toList());
+            if (!values.contains(CUSTOM_SLOT_VALUE)) {
+                values.add(CUSTOM_SLOT_VALUE);
+            }
+            return values;
+        }
+
+        private String getSelectedSlotChoice(AscConfig.SlotRule rule, MinecraftClient client) {
+            if (rule.targetSlots == null || rule.targetSlots.isEmpty()) {
+                return getSlotChoices(client).getFirst();
+            }
+
+            String value = rule.targetSlots.getFirst();
+            return getSlotChoices(client).contains(value) ? value : CUSTOM_SLOT_VALUE;
+        }
+
+        private String getCustomSlotValue(AscConfig.SlotRule rule, MinecraftClient client) {
+            if (rule.targetSlots == null || rule.targetSlots.isEmpty()) {
+                return "";
+            }
+
+            String value = rule.targetSlots.getFirst();
+            return getSlotChoices(client).contains(value) ? "" : value;
+        }
+
+        private void applySlotChoice(AscConfig.SlotRule rule, String choice, MinecraftClient client) {
+            if (CUSTOM_SLOT_VALUE.equals(choice)) {
+                String currentCustom = getCustomSlotValue(rule, client);
+                if (!currentCustom.isBlank()) {
+                    rule.targetSlots = List.of(currentCustom);
+                } else {
+                    rule.targetSlots = List.of();
+                }
+                return;
+            }
+
+            rule.targetSlots = List.of(choice);
+        }
+
         private Screen buildRuleEditorScreen(Screen previousScreen) {
             MinecraftClient client = MinecraftClient.getInstance();
 
@@ -341,10 +383,6 @@ public class AscModMenuIntegration implements ModMenuApi {
                     .title(Text.of("Edit Rule"))
                     .category(ConfigCategory.createBuilder()
                             .name(Text.of("Rule"))
-                            .option(dev.isxander.yacl3.api.ButtonOption.createBuilder()
-                                    .name(Text.of("← Back to rules"))
-                                    .action((screen, button) -> MinecraftClient.getInstance().setScreen(previousScreen))
-                                    .build())
                             .option(Option.<String>createBuilder()
                                     .name(Text.of("Item ID"))
                                     .description(OptionDescription.of(Text.of("Example: minecraft:diamond")))
@@ -365,44 +403,63 @@ public class AscModMenuIntegration implements ModMenuApi {
                                     .build()
                             )
 
-                            .group(ListOption.<String>createBuilder(String.class)
-                                    .name(Text.of("Target Slots"))
+                            .option(Option.<String>createBuilder()
+                                    .name(Text.of("Target Slot"))
                                     .description(OptionDescription.of(
                                             hasWorld
-                                                    ? Text.of("Available slots from loaded world")
+                                                    ? Text.of("Choose a known slot or Custom")
                                                     : Text.of("⚠ Limited list (join world for full list)")
                                     ))
                                     .binding(
-                                            List.of(),
-                                            () -> workingRule.targetSlots,
+                                            getSlotChoices(client).getFirst(),
+                                            () -> getSelectedSlotChoice(workingRule, client),
                                             v -> {
-                                                workingRule.targetSlots = v;
+                                                applySlotChoice(workingRule, v, client);
                                                 entry.requestSet(workingRule);
                                             }
                                     )
-                                    .initial(() -> "")
                                     .controller(opt -> DropdownStringControllerBuilder.create(opt)
-                                            .values(Arrays.asList(getAvailableSlots(client)))
+                                            .values(getSlotChoices(client))
+                                            .allowAnyValue(false)
+                                            .allowEmptyValue(false)
+                                    )
+                                    .build()
+                            )
+
+                            .option(Option.<String>createBuilder()
+                                    .name(Text.of("Custom Target Slot"))
+                                    .description(OptionDescription.of(Text.of("Used only when Target Slot = custom")))
+                                    .binding(
+                                            "",
+                                            () -> getCustomSlotValue(workingRule, client),
+                                            v -> {
+                                                if (CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule, client)) && !v.isBlank()) {
+                                                    workingRule.targetSlots = List.of(v);
+                                                    entry.requestSet(workingRule);
+                                                }
+                                            }
+                                    )
+                                    .controller(opt -> DropdownStringControllerBuilder.create(opt)
+                                            .values(List.of())
                                             .allowAnyValue(true)
                                             .allowEmptyValue(false)
                                     )
                                     .build()
                             )
 
-                            .option(Option.<Boolean>createBuilder()
+                            .option(Option.<AscConfig.SlotRule.OperationMode>createBuilder(AscConfig.SlotRule.OperationMode.class)
                                     .name(Text.of("Mode"))
-                                    .description(OptionDescription.of(Text.of("Disabled = MERGE, Enabled = REPLACE")))
+                                    .description(OptionDescription.of(Text.of("MERGE: Adds slots
+REPLACE: Overrides slots")))
                                     .binding(
-                                            false,
-                                            () -> workingRule.mode == AscConfig.SlotRule.OperationMode.REPLACE,
+                                            AscConfig.SlotRule.OperationMode.MERGE,
+                                            () -> workingRule.mode,
                                             v -> {
-                                                workingRule.mode = v
-                                                        ? AscConfig.SlotRule.OperationMode.REPLACE
-                                                        : AscConfig.SlotRule.OperationMode.MERGE;
+                                                workingRule.mode = v;
                                                 entry.requestSet(workingRule);
                                             }
                                     )
-                                    .controller(BooleanControllerBuilder::create)
+                                    .controller(EnumDropdownControllerBuilder::create)
                                     .build()
                             )
 
