@@ -3,8 +3,8 @@ package com.ulasunoka.asc.config;
 import me.fzzyhmstrs.fzzy_config.api.ConfigApiJava;
 import me.fzzyhmstrs.fzzy_config.api.RegisterType;
 import me.fzzyhmstrs.fzzy_config.config.Config;
-import me.fzzyhmstrs.fzzy_config.config.ConfigSection;
 import me.fzzyhmstrs.fzzy_config.validation.collection.ValidatedList;
+import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedAny;
 import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedEnum;
 import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedString;
 import me.fzzyhmstrs.fzzy_config.validation.minecraft.ValidatedIdentifier;
@@ -37,7 +37,7 @@ public class AscConfig extends Config {
 
     public static final Map<String, SlotRuleData> RULE_CACHE = new HashMap<>();
 
-    public ValidatedList<SlotRule> rules = new ValidatedList<>(new ArrayList<>(), new SlotRule());
+    public ValidatedList<SlotRule> rules = new ValidatedList<>(new ArrayList<>(), new ValidatedAny<>(new SlotRule()));
 
     public AscConfig() {
         super(Identifier.of("asc", "config"), "", "", "asc");
@@ -54,19 +54,21 @@ public class AscConfig extends Config {
         return INSTANCE;
     }
 
-    public static void save() {
-        // Fzzy Config persists edits automatically from the generated GUI.
-    }
-
     public static void updateCache() {
         RULE_CACHE.clear();
-        for (SlotRule rule : get().rules) {
+
+        List<SlotRule> configuredRules = get().rules.get();
+        if (configuredRules == null) {
+            return;
+        }
+
+        for (SlotRule rule : configuredRules) {
             SlotRuleData exported = rule.export();
             RULE_CACHE.put(exported.itemId(), exported);
         }
     }
 
-    public static class SlotRule extends ConfigSection {
+    public static class SlotRule {
 
         public ValidatedIdentifier itemId = ValidatedIdentifier.ofRegistry(Identifier.of("minecraft", "stick"), Registries.ITEM);
 
@@ -74,7 +76,7 @@ public class AscConfig extends Config {
 
         public ValidatedString customTargetSlot = new ValidatedString("");
 
-        public ValidatedEnum<OperationMode> mode = new ValidatedEnum<>(OperationMode.MERGE, OperationMode.class);
+        public ValidatedEnum<OperationMode> mode = new ValidatedEnum<>(OperationMode.MERGE);
 
         private static List<String> getTargetChoices() {
             List<String> slots = new ArrayList<>(List.of(FALLBACK_SLOTS));

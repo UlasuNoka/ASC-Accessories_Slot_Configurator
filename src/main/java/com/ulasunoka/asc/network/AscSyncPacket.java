@@ -41,7 +41,7 @@ public class AscSyncPacket {
 
             net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register(
                     (handler, sender, server) -> {
-                        String configJson = GSON.toJson(AscConfig.get().rules.stream().map(AscConfig.SlotRule::export).toList());
+                        String configJson = GSON.toJson(AscConfig.get().rules.get().stream().map(AscConfig.SlotRule::export).toList());
                         ServerPlayNetworking.send(handler.player, new SyncPayload(configJson));
                     }
             );
