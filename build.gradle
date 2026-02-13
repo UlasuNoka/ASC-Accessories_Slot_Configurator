@@ -56,7 +56,7 @@ dependencies {
     modImplementation "maven.modrinth:fzzy-config:${project.fzzy_config_version}"
 
     // Kotlin stdlib is required by Fzzy Config classes referenced from Java
-    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:${project.kotlin_version}"
 
     // Mod Menu
     modImplementation "com.terraformersmc:modmenu:${project.mod_menu_version}"
