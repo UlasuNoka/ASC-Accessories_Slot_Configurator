@@ -330,14 +330,26 @@ public class AscModMenuIntegration implements ModMenuApi {
         }
 
         private List<String> getTargetSlotChoices() {
-            java.util.ArrayList<String> values = new java.util.ArrayList<>();
+            java.util.ArrayList<String> values = new java.util.ArrayList<>(Arrays.stream(FALLBACK_SLOTS).toList());
             values.add(CUSTOM_SLOT_VALUE);
-            values.addAll(Arrays.stream(FALLBACK_SLOTS).toList());
             return values;
         }
 
         private List<String> getCustomSlotSuggestions(MinecraftClient client) {
-            return Arrays.stream(getAvailableSlots(client)).sorted().toList();
+            if (client.world == null) {
+                return List.of();
+            }
+
+            try {
+                var slots = SlotTypeLoader.getSlotTypes(client.world);
+                if (slots == null || slots.isEmpty()) {
+                    return List.of();
+                }
+                return slots.keySet().stream().sorted().toList();
+            } catch (Exception e) {
+                LOGGER.error("[ASC] Failed to fetch dynamic custom slots", e);
+                return List.of();
+            }
         }
 
         private String getSelectedSlotChoice(AscConfig.SlotRule rule) {
@@ -410,17 +422,14 @@ public class AscModMenuIntegration implements ModMenuApi {
 
                             .option(Option.<String>createBuilder()
                                     .name(Text.of("Target Slot"))
-                                    .description(OptionDescription.of(
-                                            hasWorld
-                                                    ? Text.of("Choose a known slot or Custom")
-                                                    : Text.of("⚠ Limited list (join world for full list)")
-                                    ))
+                                    .description(OptionDescription.of(Text.of("Choose a base slot or ★ Custom...")))
                                     .binding(
                                             getTargetSlotChoices().getFirst(),
                                             () -> getSelectedSlotChoice(workingRule),
                                             v -> {
                                                 applySlotChoice(workingRule, v);
                                                 entry.requestSet(workingRule);
+                                                MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(previousScreen));
                                             }
                                     )
                                     .controller(opt -> DropdownStringControllerBuilder.create(opt)
@@ -433,7 +442,12 @@ public class AscModMenuIntegration implements ModMenuApi {
 
                             .option(Option.<String>createBuilder()
                                     .name(Text.of("Custom Target Slot"))
-                                    .description(OptionDescription.of(Text.of("Used only when Target Slot = ★ Custom...")))
+                                    .description(OptionDescription.of(
+                                            hasWorld
+                                                    ? Text.of("Used only when Target Slot = ★ Custom...")
+                                                    : Text.of("Used only when Target Slot = ★ Custom...
+⚠ Limited list (join world for full list)")
+                                    ))
                                     .available(CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule)))
                                     .binding(
                                             "",
