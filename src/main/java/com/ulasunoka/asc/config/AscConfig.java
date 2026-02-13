@@ -57,7 +57,7 @@ public class AscConfig extends Config {
     public static void updateCache() {
         RULE_CACHE.clear();
 
-        List<SlotRule> configuredRules = get().rules.get();
+        List<? extends SlotRule> configuredRules = get().rules.get();
         if (configuredRules == null) {
             return;
         }
