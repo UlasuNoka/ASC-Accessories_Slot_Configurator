@@ -10,7 +10,6 @@ import dev.isxander.yacl3.api.OptionDescription;
 import dev.isxander.yacl3.api.YetAnotherConfigLib;
 import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
 import dev.isxander.yacl3.api.controller.CyclingListControllerBuilder;
-import dev.isxander.yacl3.api.controller.ItemControllerBuilder;
 import dev.isxander.yacl3.api.utils.Dimension;
 import dev.isxander.yacl3.gui.AbstractWidget;
 import dev.isxander.yacl3.gui.LowProfileButtonWidget;
@@ -21,7 +20,6 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -384,20 +382,22 @@ public class AscModMenuIntegration implements ModMenuApi {
                     .title(Text.of("Edit Rule"))
                     .category(ConfigCategory.createBuilder()
                             .name(Text.of("Rule"))
-                            .option(Option.<Item>createBuilder(Item.class)
-                                    .name(Text.of("Item"))
-                                    .description(OptionDescription.of(Text.of("Select an item with icon and localized name")))
+                            .option(Option.<String>createBuilder()
+                                    .name(Text.of("Item ID"))
+                                    .description(OptionDescription.of(Text.of("Example: minecraft:diamond")))
                                     .binding(
-                                            Items.STICK,
-                                            () -> parseIdentifier(workingRule.itemId)
-                                                    .flatMap(id -> Registries.ITEM.getOrEmpty(id))
-                                                    .orElse(Items.STICK),
+                                            "minecraft:stick",
+                                            () -> workingRule.itemId,
                                             v -> {
-                                                workingRule.itemId = Registries.ITEM.getId(v).toString();
+                                                workingRule.itemId = v;
                                                 entry.requestSet(workingRule);
                                             }
                                     )
-                                    .controller(ItemControllerBuilder::create)
+                                    .controller(opt -> DropdownStringControllerBuilder.create(opt)
+                                            .values(Registries.ITEM.getIds().stream().map(Identifier::toString).toList())
+                                            .allowAnyValue(true)
+                                            .allowEmptyValue(false)
+                                    )
                                     .build()
                             )
 
