@@ -94,11 +94,6 @@ public class AscConfig extends Config {
 
         public ValidatedEnum<OperationMode> mode = new ValidatedEnum<>(OperationMode.MERGE, ValidatedEnum.WidgetType.CYCLING);
 
-        public SlotRule() {
-            // Friendly field title fallback when translation is missing.
-            this.translatableEntryKey = "rule";
-        }
-
         public SlotRuleData export() {
             List<String> slots = new ArrayList<>();
             for (String slot : targetSlots.get()) {
@@ -119,10 +114,6 @@ public class AscConfig extends Config {
 
         public ValidatedBoolean allowCustomTargetSlots = new ValidatedBoolean(false);
 
-        public AdvancedSettings() {
-            // This key avoids the generic "Config Section" label fallback in the UI.
-            this.translatableEntryKey = "advanced_settings";
-        }
     }
 
     private static class DynamicSlotString extends ValidatedString {
@@ -158,7 +149,7 @@ public class AscConfig extends Config {
 
             ValidatedField.Companion.attachProvider(
                     this,
-                    Translatable.Provider.WIDGET_TITLE,
+                    Translatable.Provider.Companion.getWIDGET_TITLE(),
                     (rule, fallback) -> formatRuleSummary(rule)
             );
         }
