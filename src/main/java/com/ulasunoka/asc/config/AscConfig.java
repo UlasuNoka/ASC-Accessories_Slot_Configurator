@@ -3,7 +3,10 @@ package com.ulasunoka.asc.config;
 import me.fzzyhmstrs.fzzy_config.api.ConfigApiJava;
 import me.fzzyhmstrs.fzzy_config.api.RegisterType;
 import me.fzzyhmstrs.fzzy_config.config.Config;
+import com.mojang.brigadier.suggestion.Suggestions;
 import me.fzzyhmstrs.fzzy_config.config.ConfigSection;
+import me.fzzyhmstrs.fzzy_config.entry.EntryChecker;
+import me.fzzyhmstrs.fzzy_config.entry.EntrySuggester;
 import me.fzzyhmstrs.fzzy_config.entry.EntryValidator;
 import me.fzzyhmstrs.fzzy_config.util.AllowableStrings;
 import me.fzzyhmstrs.fzzy_config.util.ValidationResult;
@@ -23,7 +26,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Predicate;
+import java.util.concurrent.CompletableFuture;
+
+import me.fzzyhmstrs.fzzy_config.validation.misc.ChoiceValidator;
 
 public class AscConfig extends Config {
 
@@ -91,9 +96,12 @@ public class AscConfig extends Config {
         public AdvancedSettings advancedSettings = new AdvancedSettings();
 
         public SlotRuleData export() {
-            List<String> slots = targetSlots.get().stream()
-                    .filter(slot -> slot != null && !slot.isBlank())
-                    .toList();
+            List<String> slots = new ArrayList<>();
+            for (String slot : targetSlots.get()) {
+                if (slot != null && !slot.isBlank()) {
+                    slots.add(slot);
+                }
+            }
 
             return new SlotRuleData(
                     itemId.get().toString(),
@@ -107,37 +115,35 @@ public class AscConfig extends Config {
         public ValidatedBoolean allowCustomTargetSlots = new ValidatedBoolean(false);
     }
 
-    private static class SlotStringChecker extends AllowableStrings {
+    private static class SlotStringChecker implements EntryChecker<String>, EntrySuggester<String> {
 
         private final SlotRule owner;
+        private final AllowableStrings delegate;
 
         private SlotStringChecker(SlotRule owner) {
-            super(new Predicate<>() {
-                @Override
-                public boolean test(String value) {
-                    if (owner.advancedSettings.allowCustomTargetSlots.get()) {
-                        return true;
-                    }
-                    return FALLBACK_SLOT_LIST.contains(value);
-                }
-            }, () -> FALLBACK_SLOT_LIST);
             this.owner = owner;
+            this.delegate = new AllowableStrings(FALLBACK_SLOT_LIST::contains, () -> FALLBACK_SLOT_LIST);
+        }
+
+        @Override
+        public CompletableFuture<Suggestions> getSuggestions(String input, int cursor, ChoiceValidator<String> choiceValidator) {
+            return delegate.getSuggestions(input, cursor, choiceValidator);
         }
 
         @Override
         public ValidationResult<String> validateEntry(String input, EntryValidator.ValidationType type) {
             if (owner.advancedSettings.allowCustomTargetSlots.get()) {
-                return ValidationResult.success(input);
+                return ValidationResult.Companion.success(input);
             }
-            return super.validateEntry(input, type);
+            return delegate.validateEntry(input, type);
         }
 
         @Override
         public ValidationResult<String> correctEntry(String input, EntryValidator.ValidationType type) {
             if (owner.advancedSettings.allowCustomTargetSlots.get()) {
-                return ValidationResult.success(input);
+                return ValidationResult.Companion.success(input);
             }
-            return super.correctEntry(input, type);
+            return delegate.correctEntry(input, type);
         }
     }
 
@@ -148,7 +154,7 @@ public class AscConfig extends Config {
         }
 
         @Override
-        protected MutableText provideTranslation(String fallback) {
+        public MutableText provideTranslation(String fallback) {
             SlotRule rule = get();
             Identifier id = rule.itemId.get();
             Item item = Registries.ITEM.get(id);
