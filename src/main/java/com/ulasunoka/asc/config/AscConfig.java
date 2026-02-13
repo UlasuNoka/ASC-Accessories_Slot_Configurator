@@ -3,20 +3,22 @@ package com.ulasunoka.asc.config;
 import me.fzzyhmstrs.fzzy_config.api.ConfigApiJava;
 import me.fzzyhmstrs.fzzy_config.api.RegisterType;
 import me.fzzyhmstrs.fzzy_config.config.Config;
-import com.mojang.brigadier.suggestion.Suggestions;
 import me.fzzyhmstrs.fzzy_config.config.ConfigSection;
-import me.fzzyhmstrs.fzzy_config.entry.EntryChecker;
-import me.fzzyhmstrs.fzzy_config.entry.EntrySuggester;
-import me.fzzyhmstrs.fzzy_config.entry.EntryValidator;
+import me.fzzyhmstrs.fzzy_config.screen.decoration.Decorated;
 import me.fzzyhmstrs.fzzy_config.util.AllowableStrings;
+import me.fzzyhmstrs.fzzy_config.util.Translatable;
 import me.fzzyhmstrs.fzzy_config.util.ValidationResult;
+import me.fzzyhmstrs.fzzy_config.validation.ValidatedField;
 import me.fzzyhmstrs.fzzy_config.validation.collection.ValidatedList;
 import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedAny;
 import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedBoolean;
 import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedEnum;
 import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedString;
-import me.fzzyhmstrs.fzzy_config.validation.minecraft.ValidatedIdentifier;
+import me.fzzyhmstrs.fzzy_config.validation.minecraft.ValidatedRegistryType;
+import net.minecraft.client.gui.DrawContext;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
@@ -26,9 +28,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-
-import me.fzzyhmstrs.fzzy_config.validation.misc.ChoiceValidator;
 
 public class AscConfig extends Config {
 
@@ -82,18 +81,23 @@ public class AscConfig extends Config {
         }
     }
 
-    public static class SlotRule {
+    public static class SlotRule extends ConfigSection {
 
-        public ValidatedIdentifier itemId = ValidatedIdentifier.ofRegistry(Identifier.of("minecraft", "stick"), Registries.ITEM);
+        public ValidatedField<Item> item = ValidatedRegistryType.of(Items.STICK, Registries.ITEM);
 
         public AdvancedSettings advancedSettings = new AdvancedSettings();
 
         public ValidatedList<String> targetSlots = new ValidatedList<>(
                 new ArrayList<>(List.of("head")),
-                new ValidatedString("head", new SlotStringChecker(this))
+                new DynamicSlotString(this)
         );
 
         public ValidatedEnum<OperationMode> mode = new ValidatedEnum<>(OperationMode.MERGE, ValidatedEnum.WidgetType.CYCLING);
+
+        public SlotRule() {
+            // Friendly field title fallback when translation is missing.
+            this.translatableEntryKey = "rule";
+        }
 
         public SlotRuleData export() {
             List<String> slots = new ArrayList<>();
@@ -104,7 +108,7 @@ public class AscConfig extends Config {
             }
 
             return new SlotRuleData(
-                    itemId.get().toString(),
+                    Registries.ITEM.getId(item.get()).toString(),
                     slots,
                     mode.get() == null ? OperationMode.MERGE : mode.get()
             );
@@ -112,38 +116,38 @@ public class AscConfig extends Config {
     }
 
     public static class AdvancedSettings extends ConfigSection {
+
         public ValidatedBoolean allowCustomTargetSlots = new ValidatedBoolean(false);
+
+        public AdvancedSettings() {
+            // This key avoids the generic "Config Section" label fallback in the UI.
+            this.translatableEntryKey = "advanced_settings";
+        }
     }
 
-    private static class SlotStringChecker implements EntryChecker<String>, EntrySuggester<String> {
+    private static class DynamicSlotString extends ValidatedString {
 
         private final SlotRule owner;
-        private final AllowableStrings delegate;
 
-        private SlotStringChecker(SlotRule owner) {
+        private DynamicSlotString(SlotRule owner) {
+            super("head", new AllowableStrings(FALLBACK_SLOT_LIST::contains, () -> FALLBACK_SLOT_LIST));
             this.owner = owner;
-            this.delegate = new AllowableStrings(FALLBACK_SLOT_LIST::contains, () -> FALLBACK_SLOT_LIST);
         }
 
         @Override
-        public CompletableFuture<Suggestions> getSuggestions(String input, int cursor, ChoiceValidator<String> choiceValidator) {
-            return delegate.getSuggestions(input, cursor, choiceValidator);
-        }
-
-        @Override
-        public ValidationResult<String> validateEntry(String input, EntryValidator.ValidationType type) {
+        public ValidationResult<String> validateEntry(String input, me.fzzyhmstrs.fzzy_config.entry.EntryValidator.ValidationType type) {
             if (owner.advancedSettings != null && owner.advancedSettings.allowCustomTargetSlots.get()) {
                 return ValidationResult.Companion.success(input);
             }
-            return delegate.validateEntry(input, type);
+            return super.validateEntry(input, type);
         }
 
         @Override
-        public ValidationResult<String> correctEntry(String input, EntryValidator.ValidationType type) {
+        public ValidationResult<String> correctEntry(String input, me.fzzyhmstrs.fzzy_config.entry.EntryValidator.ValidationType type) {
             if (owner.advancedSettings != null && owner.advancedSettings.allowCustomTargetSlots.get()) {
                 return ValidationResult.Companion.success(input);
             }
-            return delegate.correctEntry(input, type);
+            return super.correctEntry(input, type);
         }
     }
 
@@ -151,18 +155,36 @@ public class AscConfig extends Config {
 
         private RuleEntryValidation() {
             super(new SlotRule());
+
+            ValidatedField.Companion.attachProvider(
+                    this,
+                    Translatable.Provider.WIDGET_TITLE,
+                    (rule, fallback) -> formatRuleSummary(rule)
+            );
         }
 
         @Override
         public MutableText provideTranslation(String fallback) {
-            SlotRule rule = get();
-            Identifier id = rule.itemId.get();
-            Item item = Registries.ITEM.get(id);
-            String technicalId = id.toString();
-            String localizedName = item.getName().getString();
-            return Text.literal(technicalId + " (" + localizedName + ")");
+            return formatRuleSummary(get());
         }
 
+        @Override
+        public Decorated.DecoratedOffset entryDeco() {
+            return new Decorated.DecoratedOffset((context, x, y, delta, enabled, selected) -> {
+                SlotRule rule = get();
+                ItemStack stack = new ItemStack(rule.item.get());
+                if (!stack.isEmpty()) {
+                    context.drawItem(stack, x, y);
+                }
+            }, 2, 2);
+        }
+
+        private static MutableText formatRuleSummary(SlotRule rule) {
+            Item item = rule.item.get();
+            Identifier id = Registries.ITEM.getId(item);
+            String localizedName = item.getName().getString();
+            return Text.literal(id + " (" + localizedName + ")");
+        }
     }
 
     public record SlotRuleData(String itemId, List<String> targetSlots, OperationMode mode) {}
