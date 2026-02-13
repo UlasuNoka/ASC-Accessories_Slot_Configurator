@@ -445,8 +445,7 @@ public class AscModMenuIntegration implements ModMenuApi {
                                     .description(OptionDescription.of(
                                             hasWorld
                                                     ? Text.of("Used only when Target Slot = ★ Custom...")
-                                                    : Text.of("Used only when Target Slot = ★ Custom...
-⚠ Limited list (join world for full list)")
+                                                    : Text.of("Used only when Target Slot = ★ Custom...\n⚠ Limited list (join world for full list)")
                                     ))
                                     .available(CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule)))
                                     .binding(
