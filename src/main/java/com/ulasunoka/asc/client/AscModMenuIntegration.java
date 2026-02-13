@@ -9,7 +9,8 @@ import dev.isxander.yacl3.api.Option;
 import dev.isxander.yacl3.api.OptionDescription;
 import dev.isxander.yacl3.api.YetAnotherConfigLib;
 import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
-import dev.isxander.yacl3.api.controller.EnumDropdownControllerBuilder;
+import dev.isxander.yacl3.api.controller.CyclingListControllerBuilder;
+import dev.isxander.yacl3.api.controller.ItemControllerBuilder;
 import dev.isxander.yacl3.api.utils.Dimension;
 import dev.isxander.yacl3.gui.AbstractWidget;
 import dev.isxander.yacl3.gui.LowProfileButtonWidget;
@@ -18,6 +19,9 @@ import io.wispforest.accessories.data.SlotTypeLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -26,6 +30,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+
 
 public class AscModMenuIntegration implements ModMenuApi {
 
@@ -44,6 +50,9 @@ public class AscModMenuIntegration implements ModMenuApi {
         "legs",
         "feet"
     };
+
+    private static final String CUSTOM_SLOT_VALUE = "★ Custom...";
+
 
     @Override
     public ConfigScreenFactory<?> getModConfigScreenFactory() {
@@ -78,7 +87,7 @@ public class AscModMenuIntegration implements ModMenuApi {
                     )
                     .initial(AscConfig.SlotRule::new)
                     // Each list entry is rendered as a button which opens a dedicated editor screen
-                    .customController(entry -> new SlotRuleEntryController(entry, parent, hasWorld))
+                    .customController(entry -> new SlotRuleEntryController(entry, hasWorld))
                     .build();
 
             categoryBuilder.group(rulesOption);
@@ -176,6 +185,79 @@ public class AscModMenuIntegration implements ModMenuApi {
         }
     }
 
+    private static final class IconButtonWrapperWidget extends AbstractWidget {
+
+        private final net.minecraft.client.gui.widget.ClickableWidget button;
+        private final java.util.function.Supplier<ItemStack> iconSupplier;
+        private Dimension<Integer> currentDimension;
+
+        private IconButtonWrapperWidget(Dimension<Integer> dim,
+                                        net.minecraft.client.gui.widget.ClickableWidget button,
+                                        java.util.function.Supplier<ItemStack> iconSupplier) {
+            super(dim);
+            this.button = button;
+            this.iconSupplier = iconSupplier;
+            this.currentDimension = dim;
+        }
+
+        @Override
+        public void setDimension(Dimension<Integer> dim) {
+            super.setDimension(dim);
+            this.currentDimension = dim;
+            this.button.setX(dim.x());
+            this.button.setY(dim.y());
+            this.button.setWidth(dim.width());
+            this.button.setHeight(dim.height());
+        }
+
+        @Override
+        public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+            this.button.render(context, mouseX, mouseY, delta);
+
+            ItemStack stack = iconSupplier.get();
+            if (!stack.isEmpty()) {
+                int iconX = this.currentDimension.x() + 6;
+                int iconY = this.currentDimension.y() + (this.currentDimension.height() - 16) / 2;
+                context.drawItem(stack, iconX, iconY);
+            }
+        }
+
+        @Override
+        public boolean onMouseClicked(double mouseX, double mouseY, int button) {
+            return this.button.mouseClicked(mouseX, mouseY, button);
+        }
+
+        @Override
+        public boolean onMouseReleased(double mouseX, double mouseY, int button) {
+            return this.button.mouseReleased(mouseX, mouseY, button);
+        }
+
+        @Override
+        public boolean onMouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+            return this.button.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        }
+
+        @Override
+        public boolean onKeyPressed(int keyCode, int scanCode, int modifiers) {
+            return this.button.keyPressed(keyCode, scanCode, modifiers);
+        }
+
+        @Override
+        public boolean onCharTyped(char chr, String key, int modifiers) {
+            return this.button.charTyped(chr, modifiers);
+        }
+
+        @Override
+        public boolean isFocused() {
+            return this.button.isFocused();
+        }
+
+        @Override
+        public void setFocused(boolean focused) {
+            this.button.setFocused(focused);
+        }
+    }
+
     /**
      * Controller for ListOption entries of SlotRule.
      * Renders each rule as a clickable button and opens an editor screen.
@@ -183,12 +265,10 @@ public class AscModMenuIntegration implements ModMenuApi {
     private static final class SlotRuleEntryController implements dev.isxander.yacl3.api.Controller<AscConfig.SlotRule> {
 
         private final dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry;
-        private final Screen parent;
         private final boolean hasWorld;
 
-        private SlotRuleEntryController(dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry, Screen parent, boolean hasWorld) {
+        private SlotRuleEntryController(dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry, boolean hasWorld) {
             this.entry = entry;
-            this.parent = parent;
             this.hasWorld = hasWorld;
         }
 
@@ -201,17 +281,111 @@ public class AscModMenuIntegration implements ModMenuApi {
         public Text formatValue() {
             AscConfig.SlotRule rule = entry.pendingValue();
             if (rule == null || rule.itemId == null || rule.itemId.isEmpty()) return Text.of("New Rule");
-            return Text.of(rule.itemId);
+
+            String itemId = rule.itemId;
+            return resolveItemName(itemId)
+                    .<Text>map(name -> Text.literal(itemId + " (").append(name).append(")"))
+                    .orElse(Text.of(itemId));
         }
 
         @Override
         public AbstractWidget provideWidget(YACLScreen screen, Dimension<Integer> dim) {
             LowProfileButtonWidget button = new LowProfileButtonWidget(
                     dim.x(), dim.y(), dim.width(), dim.height(),
-                    Text.literal("Edit: ").append(formatValue()),
+                    formatValue(),
                     btn -> MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(screen))
             );
-            return new ButtonWrapperWidget(dim, button);
+            return new IconButtonWrapperWidget(dim, button, this::resolveEntryItemStack);
+        }
+
+        private ItemStack resolveEntryItemStack() {
+            AscConfig.SlotRule rule = entry.pendingValue();
+            if (rule == null || rule.itemId == null || rule.itemId.isBlank()) {
+                return ItemStack.EMPTY;
+            }
+
+            return parseIdentifier(rule.itemId)
+                    .flatMap(id -> Registries.ITEM.getOrEmpty(id))
+                    .map(ItemStack::new)
+                    .orElse(ItemStack.EMPTY);
+        }
+
+        private Optional<Text> resolveItemName(String itemId) {
+            if (itemId == null || itemId.isBlank()) {
+                return Optional.empty();
+            }
+
+            return parseIdentifier(itemId)
+                    .flatMap(id -> Registries.ITEM.getOrEmpty(id))
+                    .map(Item::getName);
+        }
+
+
+        private Optional<Identifier> parseIdentifier(String value) {
+            if (value == null || value.isBlank()) {
+                return Optional.empty();
+            }
+
+            return Optional.ofNullable(Identifier.tryParse(value));
+        }
+
+        private List<String> getTargetSlotChoices() {
+            java.util.ArrayList<String> values = new java.util.ArrayList<>(Arrays.stream(FALLBACK_SLOTS).toList());
+            values.add(CUSTOM_SLOT_VALUE);
+            return values;
+        }
+
+        private List<String> getCustomSlotSuggestions(MinecraftClient client) {
+            if (client.world == null) {
+                return List.of();
+            }
+
+            try {
+                var slots = SlotTypeLoader.getSlotTypes(client.world);
+                if (slots == null || slots.isEmpty()) {
+                    return List.of();
+                }
+                return slots.keySet().stream().sorted().toList();
+            } catch (Exception e) {
+                LOGGER.error("[ASC] Failed to fetch dynamic custom slots", e);
+                return List.of();
+            }
+        }
+
+        private boolean isFallbackSlot(String value) {
+            return Arrays.asList(FALLBACK_SLOTS).contains(value);
+        }
+
+        private String getSelectedSlotChoice(AscConfig.SlotRule rule) {
+            if (rule.targetSlots == null || rule.targetSlots.isEmpty()) {
+                return CUSTOM_SLOT_VALUE;
+            }
+
+            String value = rule.targetSlots.getFirst();
+            return isFallbackSlot(value) ? value : CUSTOM_SLOT_VALUE;
+        }
+
+        private String getCustomSlotValue(AscConfig.SlotRule rule) {
+            if (rule.targetSlots == null || rule.targetSlots.isEmpty()) {
+                return "";
+            }
+
+            String value = rule.targetSlots.getFirst();
+            return isFallbackSlot(value) ? "" : value;
+        }
+
+        private void applySlotChoice(AscConfig.SlotRule rule, String choice) {
+            if (CUSTOM_SLOT_VALUE.equals(choice)) {
+                String currentCustom = getCustomSlotValue(rule);
+                if (!currentCustom.isBlank()) {
+                    rule.targetSlots = List.of(currentCustom);
+                } else {
+                    rule.targetSlots = List.of();
+                }
+                return;
+            }
+
+            rule.targetSlots = List.of(choice);
         }
 
         private Screen buildRuleEditorScreen(Screen previousScreen) {
@@ -221,53 +395,76 @@ public class AscModMenuIntegration implements ModMenuApi {
             AscConfig.SlotRule rule = entry.pendingValue();
             if (rule == null) {
                 rule = new AscConfig.SlotRule();
+                rule.targetSlots = List.of(FALLBACK_SLOTS[0]);
                 entry.requestSet(rule);
             }
 
             final AscConfig.SlotRule workingRule = rule;
+            if (workingRule.mode == null) {
+                workingRule.mode = AscConfig.SlotRule.OperationMode.MERGE;
+            }
 
             return YetAnotherConfigLib.createBuilder()
                     .title(Text.of("Edit Rule"))
                     .category(ConfigCategory.createBuilder()
                             .name(Text.of("Rule"))
-                            .option(Option.<String>createBuilder()
-                                    .name(Text.of("Item ID"))
-                                    .description(OptionDescription.of(Text.of("Example: minecraft:diamond")))
-
+                            .option(Option.<Item>createBuilder(Item.class)
+                                    .name(Text.of("Item"))
+                                    .description(OptionDescription.of(Text.of("Select an item (icon + localized name)")))
                                     .binding(
-                                            "minecraft:stick",
-                                            () -> workingRule.itemId,
+                                            Items.STICK,
+                                            () -> parseIdentifier(workingRule.itemId)
+                                                    .flatMap(id -> Registries.ITEM.getOrEmpty(id))
+                                                    .orElse(Items.STICK),
                                             v -> {
-                                                workingRule.itemId = v;
+                                                workingRule.itemId = Registries.ITEM.getId(v).toString();
                                                 entry.requestSet(workingRule);
                                             }
                                     )
+                                    .controller(ItemControllerBuilder::create)
+                                    .build()
+                            )
+
+                            .option(Option.<String>createBuilder()
+                                    .name(Text.of("Target Slot"))
+                                    .description(OptionDescription.of(Text.of("Choose a base slot or ★ Custom...")))
+                                    .binding(
+                                            getTargetSlotChoices().getFirst(),
+                                            () -> getSelectedSlotChoice(workingRule),
+                                            v -> {
+                                                applySlotChoice(workingRule, v);
+                                                entry.requestSet(workingRule);
+                                                MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(previousScreen));
+                                            }
+                                    )
                                     .controller(opt -> DropdownStringControllerBuilder.create(opt)
-                                            .values(Registries.ITEM.getIds().stream().map(Identifier::toString).toList())
-                                            .allowAnyValue(true)
+                                            .values(getTargetSlotChoices())
+                                            .allowAnyValue(false)
                                             .allowEmptyValue(false)
                                     )
                                     .build()
                             )
 
-                            .group(ListOption.<String>createBuilder(String.class)
-                                    .name(Text.of("Target Slots"))
+                            .option(Option.<String>createBuilder()
+                                    .name(Text.of("Custom Target Slot"))
                                     .description(OptionDescription.of(
                                             hasWorld
-                                                    ? Text.of("Available slots from loaded world")
-                                                    : Text.of("⚠ Limited list (join world for full list)")
+                                                    ? Text.of("Used only when Target Slot = ★ Custom...")
+                                                    : Text.of("Used only when Target Slot = ★ Custom...\n⚠ Limited list (join world for full list)")
                                     ))
+                                    .available(CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule)))
                                     .binding(
-                                            List.of(),
-                                            () -> workingRule.targetSlots,
+                                            "",
+                                            () -> getCustomSlotValue(workingRule),
                                             v -> {
-                                                workingRule.targetSlots = v;
-                                                entry.requestSet(workingRule);
+                                                if (CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule)) && !v.isBlank()) {
+                                                    workingRule.targetSlots = List.of(v);
+                                                    entry.requestSet(workingRule);
+                                                }
                                             }
                                     )
-                                    .initial(() -> "")
                                     .controller(opt -> DropdownStringControllerBuilder.create(opt)
-                                            .values(Arrays.asList(getAvailableSlots(client)))
+                                            .values(getCustomSlotSuggestions(client))
                                             .allowAnyValue(true)
                                             .allowEmptyValue(false)
                                     )
@@ -276,16 +473,23 @@ public class AscModMenuIntegration implements ModMenuApi {
 
                             .option(Option.<AscConfig.SlotRule.OperationMode>createBuilder(AscConfig.SlotRule.OperationMode.class)
                                     .name(Text.of("Mode"))
-                                    .description(OptionDescription.of(Text.of("MERGE: Adds slots\nREPLACE: Overrides slots")))
+                                    .description(OptionDescription.of(Text.of("Cycle between MERGE and REPLACE")))
                                     .binding(
                                             AscConfig.SlotRule.OperationMode.MERGE,
-                                            () -> workingRule.mode,
+                                            () -> workingRule.mode == null
+                                                    ? AscConfig.SlotRule.OperationMode.MERGE
+                                                    : workingRule.mode,
                                             v -> {
                                                 workingRule.mode = v;
                                                 entry.requestSet(workingRule);
                                             }
                                     )
-                                    .controller(EnumDropdownControllerBuilder::create)
+                                    .controller(opt -> CyclingListControllerBuilder.create(opt)
+                                            .values(List.of(
+                                                    AscConfig.SlotRule.OperationMode.MERGE,
+                                                    AscConfig.SlotRule.OperationMode.REPLACE
+                                            ))
+                                            .valueFormatter(mode -> Text.literal(mode.name())))
                                     .build()
                             )
 
