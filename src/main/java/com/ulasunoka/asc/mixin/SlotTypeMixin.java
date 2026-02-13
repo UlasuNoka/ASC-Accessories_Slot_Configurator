@@ -27,7 +27,7 @@ public class SlotTypeMixin {
             String itemId = Registries.ITEM.getId(stack.getItem()).toString();
 
             // 2. Check cache (O(1) complexity)
-            AscConfig.SlotRule rule = AscConfig.RULE_CACHE.get(itemId);
+            AscConfig.SlotRuleData rule = AscConfig.RULE_CACHE.get(itemId);
 
             if (rule == null) return; // No rule -> vanilla behavior
 
@@ -35,12 +35,12 @@ public class SlotTypeMixin {
             String currentSlot = reference.slotName();
 
             // 4. Apply Logic
-            boolean isTargetSlot = rule.targetSlots.contains(currentSlot);
+            boolean isTargetSlot = rule.targetSlots().contains(currentSlot);
 
             if (isTargetSlot) {
                 // User explicitly allowed this slot
                 cir.setReturnValue(true);
-            } else if (rule.mode == AscConfig.SlotRule.OperationMode.REPLACE) {
+            } else if (rule.mode() == AscConfig.OperationMode.REPLACE) {
                 // User wants ONLY specific slots, so block everything else
                 cir.setReturnValue(false);
             }

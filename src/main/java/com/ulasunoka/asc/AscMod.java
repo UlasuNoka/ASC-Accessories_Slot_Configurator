@@ -15,7 +15,7 @@ public class AscMod implements ModInitializer {
     public void onInitialize() {
         LOGGER.info("[ASC] Initializing...");
 
-        // Load config via YACL Config API
+        // Load config via Fzzy Config API
         AscConfig.load();
 
         // Build initial cache from config
