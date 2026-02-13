@@ -36,8 +36,8 @@ repositories {
 
     maven { url "https://maven.terraformersmc.com/releases/" }
 
-    // YACL (Yet Another Config Library)
-    maven { url "https://maven.isxander.dev/releases" }
+    // Modrinth Maven (Fzzy Config)
+    maven { url "https://api.modrinth.com/maven" }
 
     // Wisp Forest (Accessories)
     maven { url "https://maven.wispforest.io/releases" }
@@ -52,8 +52,8 @@ dependencies {
     // Accessories API (Critical dependency)
     modImplementation "io.wispforest:accessories-fabric:${project.accessories_version}"
 
-    // YACL (Config GUI + Config API)
-    modImplementation "dev.isxander:yet-another-config-lib:${project.yacl_version}"
+    // Fzzy Config (Config GUI + Config API)
+    modImplementation "maven.modrinth:fzzy-config:${project.fzzy_config_version}"
 
     // Mod Menu
     modImplementation "com.terraformersmc:modmenu:${project.mod_menu_version}"

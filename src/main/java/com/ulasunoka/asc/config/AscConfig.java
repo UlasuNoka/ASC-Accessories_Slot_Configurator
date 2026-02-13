@@ -1,10 +1,14 @@
 package com.ulasunoka.asc.config;
 
-import com.google.gson.GsonBuilder;
-import dev.isxander.yacl3.config.v2.api.ConfigClassHandler;
-import dev.isxander.yacl3.config.v2.api.SerialEntry;
-import dev.isxander.yacl3.config.v2.api.serializer.GsonConfigSerializerBuilder;
-import net.fabricmc.loader.api.FabricLoader;
+import me.fzzyhmstrs.fzzy_config.api.ConfigApiJava;
+import me.fzzyhmstrs.fzzy_config.api.RegisterType;
+import me.fzzyhmstrs.fzzy_config.config.Config;
+import me.fzzyhmstrs.fzzy_config.config.ConfigSection;
+import me.fzzyhmstrs.fzzy_config.validation.collection.ValidatedList;
+import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedEnum;
+import me.fzzyhmstrs.fzzy_config.validation.misc.ValidatedString;
+import me.fzzyhmstrs.fzzy_config.validation.minecraft.ValidatedIdentifier;
+import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
 
 import java.util.ArrayList;
@@ -12,62 +16,96 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class AscConfig {
+public class AscConfig extends Config {
 
-    public static final ConfigClassHandler<AscConfig> HANDLER = ConfigClassHandler.createBuilder(AscConfig.class)
-            .id(Identifier.of("asc", "config"))
-            .serializer(config -> GsonConfigSerializerBuilder.create(config)
-                    .setPath(FabricLoader.getInstance().getConfigDir().resolve("asc.json5"))
-                    .appendGsonBuilder(GsonBuilder::setPrettyPrinting)
-                    .setJson5(true)
-                    .build())
-            .build();
+    public static final String CUSTOM_SLOT_VALUE = "★ Custom...";
 
-    // Main storage for config rules. Saved to disk.
-    @SerialEntry
-    public List<SlotRule> rules = new ArrayList<>();
+    private static final String[] FALLBACK_SLOTS = {
+            "head",
+            "necklace",
+            "back",
+            "body",
+            "charm",
+            "ring",
+            "hands",
+            "belt",
+            "legs",
+            "feet"
+    };
 
-    // Runtime cache for O(1) lookups during game tick/rendering.
-    // NOT saved to disk. Must be rebuilt manually via updateCache().
-    public static Map<String, SlotRule> RULE_CACHE = new HashMap<>();
+    private static AscConfig INSTANCE;
 
-    public static class SlotRule {
-        public String itemId = "minecraft:stick";
-        public List<String> targetSlots = new ArrayList<>();
-        public OperationMode mode = OperationMode.MERGE;
+    public static final Map<String, SlotRuleData> RULE_CACHE = new HashMap<>();
 
-        public enum OperationMode {
-            MERGE,   // Allows item in new slots + original slots
-            REPLACE  // Allows item in new slots ONLY (blocks original)
-        }
-    }
+    public ValidatedList<SlotRule> rules = new ValidatedList<>(new ArrayList<>(), new SlotRule());
 
-    /**
-     * Rebuilds RULE_CACHE from the current 'rules' list.
-     * Must be called on startup, after config save, and after packet sync.
-     */
-    public static void updateCache() {
-        RULE_CACHE.clear();
-        AscConfig config = get();
-
-        if (config.rules != null) {
-            for (SlotRule rule : config.rules) {
-                // Key is raw Item ID string (e.g., "minecraft:stick")
-                RULE_CACHE.put(rule.itemId, rule);
-            }
-        }
-    }
-
-    // Helper to fetch instance from config handler
-    public static AscConfig get() {
-        return HANDLER.instance();
+    public AscConfig() {
+        super(Identifier.of("asc", "config"), "", "", "asc");
     }
 
     public static void load() {
-        HANDLER.load();
+        INSTANCE = ConfigApiJava.registerAndLoadConfig(AscConfig::new, RegisterType.BOTH);
+    }
+
+    public static AscConfig get() {
+        if (INSTANCE == null) {
+            load();
+        }
+        return INSTANCE;
     }
 
     public static void save() {
-        HANDLER.save();
+        // Fzzy Config persists edits automatically from the generated GUI.
+    }
+
+    public static void updateCache() {
+        RULE_CACHE.clear();
+        for (SlotRule rule : get().rules) {
+            SlotRuleData exported = rule.export();
+            RULE_CACHE.put(exported.itemId(), exported);
+        }
+    }
+
+    public static class SlotRule extends ConfigSection {
+
+        public ValidatedIdentifier itemId = ValidatedIdentifier.ofRegistry(Identifier.of("minecraft", "stick"), Registries.ITEM);
+
+        public ValidatedString targetSlot = ValidatedString.fromList(getTargetChoices().getFirst(), getTargetChoices());
+
+        public ValidatedString customTargetSlot = new ValidatedString("");
+
+        public ValidatedEnum<OperationMode> mode = new ValidatedEnum<>(OperationMode.MERGE, OperationMode.class);
+
+        private static List<String> getTargetChoices() {
+            List<String> slots = new ArrayList<>(List.of(FALLBACK_SLOTS));
+            slots.add(CUSTOM_SLOT_VALUE);
+            return slots;
+        }
+
+        public SlotRuleData export() {
+            String chosenTarget = targetSlot.get();
+            String customValue = customTargetSlot.get();
+
+            String resolvedSlot = CUSTOM_SLOT_VALUE.equals(chosenTarget)
+                    ? customValue
+                    : chosenTarget;
+
+            List<String> targetSlots = resolvedSlot == null || resolvedSlot.isBlank()
+                    ? List.of()
+                    : List.of(resolvedSlot);
+
+            return new SlotRuleData(
+                    itemId.get().toString(),
+                    targetSlots,
+                    mode.get() == null ? OperationMode.MERGE : mode.get()
+            );
+        }
+    }
+
+    public record SlotRuleData(String itemId, List<String> targetSlots, OperationMode mode) {}
+
+    public enum OperationMode {
+        MERGE,
+        REPLACE
     }
 }
