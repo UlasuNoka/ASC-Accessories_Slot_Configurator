@@ -434,7 +434,7 @@ public class AscModMenuIntegration implements ModMenuApi {
                             .option(Option.<String>createBuilder()
                                     .name(Text.of("Custom Target Slot"))
                                     .description(OptionDescription.of(Text.of("Used only when Target Slot = ★ Custom...")))
-                                    .available(() -> CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule)))
+                                    .available(CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule)))
                                     .binding(
                                             "",
                                             () -> getCustomSlotValue(workingRule),
