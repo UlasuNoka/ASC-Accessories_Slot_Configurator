@@ -352,13 +352,17 @@ public class AscModMenuIntegration implements ModMenuApi {
             }
         }
 
+        private boolean isFallbackSlot(String value) {
+            return Arrays.asList(FALLBACK_SLOTS).contains(value);
+        }
+
         private String getSelectedSlotChoice(AscConfig.SlotRule rule) {
             if (rule.targetSlots == null || rule.targetSlots.isEmpty()) {
-                return getTargetSlotChoices().getFirst();
+                return CUSTOM_SLOT_VALUE;
             }
 
             String value = rule.targetSlots.getFirst();
-            return getTargetSlotChoices().contains(value) ? value : CUSTOM_SLOT_VALUE;
+            return isFallbackSlot(value) ? value : CUSTOM_SLOT_VALUE;
         }
 
         private String getCustomSlotValue(AscConfig.SlotRule rule) {
@@ -367,7 +371,7 @@ public class AscModMenuIntegration implements ModMenuApi {
             }
 
             String value = rule.targetSlots.getFirst();
-            return getTargetSlotChoices().contains(value) ? "" : value;
+            return isFallbackSlot(value) ? "" : value;
         }
 
         private void applySlotChoice(AscConfig.SlotRule rule, String choice) {
@@ -391,6 +395,7 @@ public class AscModMenuIntegration implements ModMenuApi {
             AscConfig.SlotRule rule = entry.pendingValue();
             if (rule == null) {
                 rule = new AscConfig.SlotRule();
+                rule.targetSlots = List.of(FALLBACK_SLOTS[0]);
                 entry.requestSet(rule);
             }
 
