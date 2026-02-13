@@ -86,14 +86,14 @@ public class AscConfig extends Config {
 
         public ValidatedIdentifier itemId = ValidatedIdentifier.ofRegistry(Identifier.of("minecraft", "stick"), Registries.ITEM);
 
+        public AdvancedSettings advancedSettings = new AdvancedSettings();
+
         public ValidatedList<String> targetSlots = new ValidatedList<>(
                 new ArrayList<>(List.of("head")),
                 new ValidatedString("head", new SlotStringChecker(this))
         );
 
         public ValidatedEnum<OperationMode> mode = new ValidatedEnum<>(OperationMode.MERGE, ValidatedEnum.WidgetType.CYCLING);
-
-        public AdvancedSettings advancedSettings = new AdvancedSettings();
 
         public SlotRuleData export() {
             List<String> slots = new ArrayList<>();
@@ -132,7 +132,7 @@ public class AscConfig extends Config {
 
         @Override
         public ValidationResult<String> validateEntry(String input, EntryValidator.ValidationType type) {
-            if (owner.advancedSettings.allowCustomTargetSlots.get()) {
+            if (owner.advancedSettings != null && owner.advancedSettings.allowCustomTargetSlots.get()) {
                 return ValidationResult.Companion.success(input);
             }
             return delegate.validateEntry(input, type);
@@ -140,7 +140,7 @@ public class AscConfig extends Config {
 
         @Override
         public ValidationResult<String> correctEntry(String input, EntryValidator.ValidationType type) {
-            if (owner.advancedSettings.allowCustomTargetSlots.get()) {
+            if (owner.advancedSettings != null && owner.advancedSettings.allowCustomTargetSlots.get()) {
                 return ValidationResult.Companion.success(input);
             }
             return delegate.correctEntry(input, type);
