@@ -31,11 +31,16 @@ public class SlotTypeMixin {
 
             if (rule == null) return; // No rule -> vanilla behavior
 
+            if (rule.disableEquipping) {
+                cir.setReturnValue(false);
+                return;
+            }
+
             // 3. Get current slot name being checked
             String currentSlot = reference.slotName();
 
             // 4. Apply Logic
-            boolean isTargetSlot = rule.targetSlots.contains(currentSlot);
+            boolean isTargetSlot = rule.targetSlots != null && rule.targetSlots.contains(currentSlot);
 
             if (isTargetSlot) {
                 // User explicitly allowed this slot
