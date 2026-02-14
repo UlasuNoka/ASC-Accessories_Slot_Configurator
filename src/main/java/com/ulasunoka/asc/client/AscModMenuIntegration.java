@@ -220,6 +220,8 @@ public class AscModMenuIntegration implements ModMenuApi {
 
         private final dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry;
 
+        private static boolean advancedSettingsExpanded = false;
+
         private SlotRuleEntryController(dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry) {
             this.entry = entry;
         }
@@ -316,10 +318,6 @@ public class AscModMenuIntegration implements ModMenuApi {
                 }
             }
 
-            if (cleaned.isEmpty() && !advancedEnabled) {
-                cleaned.add(getDefaultSlotValue(false, client));
-            }
-
             return new ArrayList<>(cleaned);
         }
 
@@ -331,7 +329,7 @@ public class AscModMenuIntegration implements ModMenuApi {
             AscConfig.SlotRule rule = entry.pendingValue();
             if (rule == null) {
                 rule = new AscConfig.SlotRule();
-                rule.targetSlots = List.of(getDefaultSlotValue(advancedEnabled, client));
+                rule.targetSlots = new ArrayList<>();
                 entry.requestSet(rule);
             }
 
@@ -353,9 +351,9 @@ public class AscModMenuIntegration implements ModMenuApi {
                             ? Text.of("Suggestions come from Accessories API only. You may enter any non-empty slot name.")
                             : Text.of("Strict safe slot list (custom values disabled).")))
                     .available(!workingRule.disableEquipping)
-                    .initial(() -> getDefaultSlotValue(advancedEnabled, client))
+                    .initial(() -> "")
                     .binding(
-                            List.of(getDefaultSlotValue(advancedEnabled, client)),
+                            List.of(),
                             () -> sanitizeTargetSlots(workingRule.targetSlots, advancedEnabled, client),
                             v -> {
                                 workingRule.targetSlots = sanitizeTargetSlots(v, advancedEnabled, client);
@@ -371,7 +369,7 @@ public class AscModMenuIntegration implements ModMenuApi {
             OptionGroup advancedGroup = OptionGroup.createBuilder()
                     .name(Text.of("Advanced Settings"))
                     .description(OptionDescription.of(Text.of("Advanced features for this rule.")))
-                    .collapsed(true)
+                    .collapsed(!advancedSettingsExpanded)
                     .option(Option.<Boolean>createBuilder()
                             .name(Text.of("Allow custom target slots (Advanced Mode)"))
                             .description(OptionDescription.of(Text.of("Global setting. In-world only. Enables API suggestions + custom non-empty slot names.")))
@@ -381,10 +379,12 @@ public class AscModMenuIntegration implements ModMenuApi {
                                     () -> AscConfig.get().allowCustomSlots,
                                     v -> {
                                         AscConfig.get().allowCustomSlots = v;
+                                        advancedSettingsExpanded = true;
                                         MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(previousScreen));
                                     }
                             )
                             .controller(TickBoxControllerBuilder::create)
+                            .instant(true)
                             .build())
                     .option(Option.<Boolean>createBuilder()
                             .name(Text.of("Disable equipping"))
@@ -395,10 +395,12 @@ public class AscModMenuIntegration implements ModMenuApi {
                                     v -> {
                                         workingRule.disableEquipping = v;
                                         entry.requestSet(workingRule);
+                                        advancedSettingsExpanded = true;
                                         MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(previousScreen));
                                     }
                             )
                             .controller(TickBoxControllerBuilder::create)
+                            .instant(true)
                             .build())
                     .build();
 
@@ -418,6 +420,7 @@ public class AscModMenuIntegration implements ModMenuApi {
                                     }
                             )
                             .controller(ItemControllerBuilder::create)
+                            .instant(true)
                             .build())
                     .group(targetSlotsOption)
                     .option(Option.<AscConfig.SlotRule.OperationMode>createBuilder(AscConfig.SlotRule.OperationMode.class)
