@@ -48,12 +48,12 @@ dependencies {
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    
+    // Accessories API (local jar from /libs)
+    modImplementation(files("libs/accessories-fabric-1.1.0-beta.53+1.21.1.jar"))
 
-    // Accessories API (Critical dependency)
-    modImplementation "io.wispforest:accessories-fabric:${project.accessories_version}"
-
-    // YACL (Config GUI + Config API)
-    modImplementation "dev.isxander:yet-another-config-lib:${project.yacl_version}"
+    // YACL (local jar from /libs)
+    modImplementation(files("libs/yet-another-config-lib-3.8.2+1.21.1-fabric.jar"))
 
     // Mod Menu
     modImplementation "com.terraformersmc:modmenu:${project.mod_menu_version}"
