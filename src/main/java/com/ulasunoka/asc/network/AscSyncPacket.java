@@ -61,12 +61,10 @@ public class AscSyncPacket {
 
                         // CRITICAL: Update ONLY the runtime cache, do not overwrite local config file
                         // This ensures server rules apply without messing up client settings
-                        AscConfig.RULE_CACHE.clear();
-                        if (receivedConfig != null && receivedConfig.rules != null) {
-                            for (AscConfig.SlotRule rule : receivedConfig.rules) {
-                                AscConfig.RULE_CACHE.put(rule.itemId, rule);
-                            }
-                        }
+                        AscConfig.rebuildCacheFromRules(
+                                receivedConfig == null ? null : receivedConfig.rules,
+                                "server sync"
+                        );
 
                         // System.out.println("[ASC] Synced " + receivedConfig.rules.size() + " rules from server");
 

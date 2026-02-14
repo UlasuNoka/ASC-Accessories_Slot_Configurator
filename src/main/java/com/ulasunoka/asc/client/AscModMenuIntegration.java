@@ -8,14 +8,14 @@ import dev.isxander.yacl3.api.ListOption;
 import dev.isxander.yacl3.api.Option;
 import dev.isxander.yacl3.api.OptionDescription;
 import dev.isxander.yacl3.api.YetAnotherConfigLib;
-import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
 import dev.isxander.yacl3.api.controller.CyclingListControllerBuilder;
+import dev.isxander.yacl3.api.controller.DropdownStringControllerBuilder;
 import dev.isxander.yacl3.api.controller.ItemControllerBuilder;
+import dev.isxander.yacl3.api.controller.TickBoxControllerBuilder;
 import dev.isxander.yacl3.api.utils.Dimension;
 import dev.isxander.yacl3.gui.AbstractWidget;
 import dev.isxander.yacl3.gui.LowProfileButtonWidget;
 import dev.isxander.yacl3.gui.YACLScreen;
-import io.wispforest.accessories.data.SlotTypeLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -28,35 +28,16 @@ import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-
 
 public class AscModMenuIntegration implements ModMenuApi {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("asc-integration");
 
-    // Fallback list used when world is not loaded (Accessories API needs registry context)
-    private static final String[] FALLBACK_SLOTS = {
-        "head",
-        "necklace",
-        "back",
-        "body",
-        "charm",
-        "ring",
-        "hands",
-        "belt",
-        "legs",
-        "feet"
-    };
-
-    private static final String CUSTOM_SLOT_VALUE = "★ Custom...";
-
-
     @Override
     public ConfigScreenFactory<?> getModConfigScreenFactory() {
-        return parent -> buildMainScreen(parent);
+        return this::buildMainScreen;
     }
 
     private Screen buildMainScreen(Screen parent) {
@@ -69,14 +50,27 @@ public class AscModMenuIntegration implements ModMenuApi {
             var categoryBuilder = ConfigCategory.createBuilder()
                     .name(Text.of("General"));
 
-            // Warning if accessed from Main Menu
             if (!hasWorld) {
                 categoryBuilder.option(dev.isxander.yacl3.api.LabelOption.create(
-                        Text.of("§e⚠ WARNING: §rYou are not in a world!\nSlot suggestions are limited.")
+                        Text.of("§e⚠ WARNING: §rYou are not in a world! Advanced Mode is disabled in menus.")
                 ));
             }
 
-            // Dynamic list of SlotRule
+            categoryBuilder.option(Option.<Boolean>createBuilder()
+                    .name(Text.of("Allow custom target slots (Advanced Mode)"))
+                    .description(OptionDescription.of(Text.of("Enable API-based suggestions and custom slot typing while in-world.")))
+                    .available(hasWorld)
+                    .binding(
+                            false,
+                            () -> config.allowCustomSlots,
+                            v -> {
+                                config.allowCustomSlots = v;
+                                MinecraftClient.getInstance().setScreen(buildMainScreen(parent));
+                            }
+                    )
+                    .controller(TickBoxControllerBuilder::create)
+                    .build());
+
             ListOption<AscConfig.SlotRule> rulesOption = ListOption.<AscConfig.SlotRule>createBuilder(AscConfig.SlotRule.class)
                     .name(Text.of("Rules"))
                     .description(OptionDescription.of(Text.of("Add, remove and edit slot rules dynamically.")))
@@ -86,12 +80,10 @@ public class AscModMenuIntegration implements ModMenuApi {
                             v -> config.rules = v
                     )
                     .initial(AscConfig.SlotRule::new)
-                    // Each list entry is rendered as a button which opens a dedicated editor screen
-                    .customController(entry -> new SlotRuleEntryController(entry, hasWorld))
+                    .customController(SlotRuleEntryController::new)
                     .build();
 
             categoryBuilder.group(rulesOption);
-
             builder.category(categoryBuilder.build());
 
             builder.save(() -> {
@@ -104,27 +96,6 @@ public class AscModMenuIntegration implements ModMenuApi {
         }).generateScreen(parent);
     }
 
-    /**
-     * Attempts to fetch available slot types from Accessories API.
-     * Uses RegistryManager context which is required in 1.21.x.
-     */
-    private static String[] getAvailableSlots(MinecraftClient client) {
-        try {
-            if (client.world != null) {
-                var slots = SlotTypeLoader.getSlotTypes(client.world);
-                if (slots != null && !slots.isEmpty()) {
-                    return slots.keySet().toArray(String[]::new);
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.error("[ASC] Failed to fetch slots from Accessories API", e);
-        }
-        return FALLBACK_SLOTS;
-    }
-
-    /**
-     * Wraps a vanilla ButtonWidget into a YACL AbstractWidget.
-     */
     private static final class ButtonWrapperWidget extends AbstractWidget {
 
         private final net.minecraft.client.gui.widget.ClickableWidget button;
@@ -137,7 +108,6 @@ public class AscModMenuIntegration implements ModMenuApi {
         @Override
         public void setDimension(Dimension<Integer> dim) {
             super.setDimension(dim);
-            // Keep underlying button in sync with YACL layout
             this.button.setX(dim.x());
             this.button.setY(dim.y());
             this.button.setWidth(dim.width());
@@ -258,18 +228,12 @@ public class AscModMenuIntegration implements ModMenuApi {
         }
     }
 
-    /**
-     * Controller for ListOption entries of SlotRule.
-     * Renders each rule as a clickable button and opens an editor screen.
-     */
     private static final class SlotRuleEntryController implements dev.isxander.yacl3.api.Controller<AscConfig.SlotRule> {
 
         private final dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry;
-        private final boolean hasWorld;
 
-        private SlotRuleEntryController(dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry, boolean hasWorld) {
+        private SlotRuleEntryController(dev.isxander.yacl3.api.ListOptionEntry<AscConfig.SlotRule> entry) {
             this.entry = entry;
-            this.hasWorld = hasWorld;
         }
 
         @Override
@@ -320,7 +284,6 @@ public class AscModMenuIntegration implements ModMenuApi {
                     .map(Item::getName);
         }
 
-
         private Optional<Identifier> parseIdentifier(String value) {
             if (value == null || value.isBlank()) {
                 return Optional.empty();
@@ -329,73 +292,61 @@ public class AscModMenuIntegration implements ModMenuApi {
             return Optional.ofNullable(Identifier.tryParse(value));
         }
 
-        private List<String> getTargetSlotChoices() {
-            java.util.ArrayList<String> values = new java.util.ArrayList<>(Arrays.stream(FALLBACK_SLOTS).toList());
-            values.add(CUSTOM_SLOT_VALUE);
-            return values;
+        private boolean isAdvancedModeEnabled(MinecraftClient client) {
+            return client.world != null && AscConfig.get().allowCustomSlots;
         }
 
-        private List<String> getCustomSlotSuggestions(MinecraftClient client) {
-            if (client.world == null) {
-                return List.of();
-            }
-
-            try {
-                var slots = SlotTypeLoader.getSlotTypes(client.world);
-                if (slots == null || slots.isEmpty()) {
-                    return List.of();
-                }
-                return slots.keySet().stream().sorted().toList();
-            } catch (Exception e) {
-                LOGGER.error("[ASC] Failed to fetch dynamic custom slots", e);
-                return List.of();
-            }
-        }
-
-        private boolean isFallbackSlot(String value) {
-            return Arrays.asList(FALLBACK_SLOTS).contains(value);
-        }
-
-        private String getSelectedSlotChoice(AscConfig.SlotRule rule) {
-            if (rule.targetSlots == null || rule.targetSlots.isEmpty()) {
-                return CUSTOM_SLOT_VALUE;
-            }
-
-            String value = rule.targetSlots.getFirst();
-            return isFallbackSlot(value) ? value : CUSTOM_SLOT_VALUE;
-        }
-
-        private String getCustomSlotValue(AscConfig.SlotRule rule) {
+        private String firstNonBlankSlot(AscConfig.SlotRule rule) {
             if (rule.targetSlots == null || rule.targetSlots.isEmpty()) {
                 return "";
             }
 
-            String value = rule.targetSlots.getFirst();
-            return isFallbackSlot(value) ? "" : value;
+            for (String slot : rule.targetSlots) {
+                if (slot != null && !slot.trim().isEmpty()) {
+                    return slot.trim();
+                }
+            }
+            return "";
         }
 
-        private void applySlotChoice(AscConfig.SlotRule rule, String choice) {
-            if (CUSTOM_SLOT_VALUE.equals(choice)) {
-                String currentCustom = getCustomSlotValue(rule);
-                if (!currentCustom.isBlank()) {
-                    rule.targetSlots = List.of(currentCustom);
-                } else {
-                    rule.targetSlots = List.of();
-                }
+        private String getDisplayedTargetSlot(AscConfig.SlotRule rule, boolean advancedEnabled) {
+            String current = firstNonBlankSlot(rule);
+            if (advancedEnabled) {
+                return current;
+            }
+
+            List<String> safeSlots = AccessoriesDataHelper.getSafeSlots();
+            if (!safeSlots.contains(current)) {
+                return safeSlots.getFirst();
+            }
+            return current;
+        }
+
+        private void applyTargetSlotInput(AscConfig.SlotRule rule, String value, boolean advancedEnabled) {
+            if (value == null) {
                 return;
             }
 
-            rule.targetSlots = List.of(choice);
+            String trimmed = value.trim();
+            if (trimmed.isEmpty()) {
+                return;
+            }
+
+            if (!advancedEnabled && !AccessoriesDataHelper.getSafeSlots().contains(trimmed)) {
+                return;
+            }
+
+            rule.targetSlots = List.of(trimmed);
         }
 
         private Screen buildRuleEditorScreen(Screen previousScreen) {
             MinecraftClient client = MinecraftClient.getInstance();
+            boolean advancedEnabled = isAdvancedModeEnabled(client);
 
-            // Ensure we always edit the *pending* rule instance
             AscConfig.SlotRule rule = entry.pendingValue();
             if (rule == null) {
                 rule = new AscConfig.SlotRule();
-                rule.targetSlots = List.of(FALLBACK_SLOTS[0]);
+                rule.targetSlots = List.of(AccessoriesDataHelper.getSafeSlots().getFirst());
                 entry.requestSet(rule);
             }
 
@@ -403,6 +354,14 @@ public class AscModMenuIntegration implements ModMenuApi {
             if (workingRule.mode == null) {
                 workingRule.mode = AscConfig.SlotRule.OperationMode.MERGE;
             }
+
+            if (workingRule.targetSlots == null || workingRule.targetSlots.isEmpty()) {
+                workingRule.targetSlots = List.of(AccessoriesDataHelper.getSafeSlots().getFirst());
+            }
+
+            List<String> targetSlotSuggestions = advancedEnabled
+                    ? AccessoriesDataHelper.getApiSlots(client)
+                    : AccessoriesDataHelper.getSafeSlots();
 
             return YetAnotherConfigLib.createBuilder()
                     .title(Text.of("Edit Rule"))
@@ -422,58 +381,30 @@ public class AscModMenuIntegration implements ModMenuApi {
                                             }
                                     )
                                     .controller(ItemControllerBuilder::create)
-                                    .build()
-                            )
-
+                                    .build())
                             .option(Option.<String>createBuilder()
                                     .name(Text.of("Target Slot"))
-                                    .description(OptionDescription.of(Text.of("Choose a base slot or ★ Custom...")))
+                                    .description(OptionDescription.of(advancedEnabled
+                                            ? Text.of("Suggestions come from Accessories API only. Custom non-empty values are allowed.")
+                                            : Text.of("Strict safe slot list. Custom values are disabled.")))
+                                    .available(!workingRule.disableEquipping)
                                     .binding(
-                                            getTargetSlotChoices().getFirst(),
-                                            () -> getSelectedSlotChoice(workingRule),
+                                            AccessoriesDataHelper.getSafeSlots().getFirst(),
+                                            () -> getDisplayedTargetSlot(workingRule, advancedEnabled),
                                             v -> {
-                                                applySlotChoice(workingRule, v);
+                                                applyTargetSlotInput(workingRule, v, advancedEnabled);
                                                 entry.requestSet(workingRule);
-                                                MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(previousScreen));
                                             }
                                     )
                                     .controller(opt -> DropdownStringControllerBuilder.create(opt)
-                                            .values(getTargetSlotChoices())
-                                            .allowAnyValue(false)
-                                            .allowEmptyValue(false)
-                                    )
-                                    .build()
-                            )
-
-                            .option(Option.<String>createBuilder()
-                                    .name(Text.of("Custom Target Slot"))
-                                    .description(OptionDescription.of(
-                                            hasWorld
-                                                    ? Text.of("Used only when Target Slot = ★ Custom...")
-                                                    : Text.of("Used only when Target Slot = ★ Custom...\n⚠ Limited list (join world for full list)")
-                                    ))
-                                    .available(CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule)))
-                                    .binding(
-                                            "",
-                                            () -> getCustomSlotValue(workingRule),
-                                            v -> {
-                                                if (CUSTOM_SLOT_VALUE.equals(getSelectedSlotChoice(workingRule)) && !v.isBlank()) {
-                                                    workingRule.targetSlots = List.of(v);
-                                                    entry.requestSet(workingRule);
-                                                }
-                                            }
-                                    )
-                                    .controller(opt -> DropdownStringControllerBuilder.create(opt)
-                                            .values(getCustomSlotSuggestions(client))
-                                            .allowAnyValue(true)
-                                            .allowEmptyValue(false)
-                                    )
-                                    .build()
-                            )
-
+                                            .values(targetSlotSuggestions)
+                                            .allowAnyValue(advancedEnabled)
+                                            .allowEmptyValue(false))
+                                    .build())
                             .option(Option.<AscConfig.SlotRule.OperationMode>createBuilder(AscConfig.SlotRule.OperationMode.class)
                                     .name(Text.of("Mode"))
                                     .description(OptionDescription.of(Text.of("Cycle between MERGE and REPLACE")))
+                                    .available(!workingRule.disableEquipping)
                                     .binding(
                                             AscConfig.SlotRule.OperationMode.MERGE,
                                             () -> workingRule.mode == null
@@ -490,15 +421,24 @@ public class AscModMenuIntegration implements ModMenuApi {
                                                     AscConfig.SlotRule.OperationMode.REPLACE
                                             ))
                                             .valueFormatter(mode -> Text.literal(mode.name())))
-                                    .build()
-                            )
-
-                            .build()
-                    )
-                    .save(() -> {
-                        // Save only the list entry pending value; actual config saving happens on the main screen "Done"
-                        entry.requestSet(workingRule);
-                    })
+                                    .build())
+                            .option(Option.<Boolean>createBuilder()
+                                    .name(Text.of("Disable equipping"))
+                                    .description(OptionDescription.of(Text.of("When enabled, this item cannot be equipped into any slot.\nExisting slot settings and Mode are preserved and will be restored when disabled.")))
+                                    .available(advancedEnabled)
+                                    .binding(
+                                            false,
+                                            () -> workingRule.disableEquipping,
+                                            v -> {
+                                                workingRule.disableEquipping = v;
+                                                entry.requestSet(workingRule);
+                                                MinecraftClient.getInstance().setScreen(buildRuleEditorScreen(previousScreen));
+                                            }
+                                    )
+                                    .controller(TickBoxControllerBuilder::create)
+                                    .build())
+                            .build())
+                    .save(() -> entry.requestSet(workingRule))
                     .build()
                     .generateScreen(previousScreen);
         }
