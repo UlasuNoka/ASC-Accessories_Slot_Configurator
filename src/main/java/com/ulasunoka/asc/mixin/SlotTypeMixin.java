@@ -23,32 +23,28 @@ public class SlotTypeMixin {
     )
     private static void overrideSlotInsertValidation(ItemStack stack, SlotReference reference, CallbackInfoReturnable<Boolean> cir) {
         try {
-            // 1. Fast lookup via Item ID
             String itemId = Registries.ITEM.getId(stack.getItem()).toString();
-
-            // 2. Check cache (O(1) complexity)
             AscConfig.SlotRule rule = AscConfig.RULE_CACHE.get(itemId);
 
             if (rule == null) return; // No rule -> vanilla behavior
 
-            // 3. Get current slot name being checked
-            String currentSlot = reference.slotName();
+            if (rule.disableEquipping) {
+                cir.setReturnValue(false);
+                return;
+            }
 
-            // 4. Apply Logic
-            boolean isTargetSlot = rule.targetSlots.contains(currentSlot);
+            String currentSlot = reference.slotName();
+            boolean isTargetSlot = rule.targetSlots != null && rule.targetSlots.contains(currentSlot);
 
             if (isTargetSlot) {
-                // User explicitly allowed this slot
                 cir.setReturnValue(true);
             } else if (rule.mode == AscConfig.SlotRule.OperationMode.REPLACE) {
-                // User wants ONLY specific slots, so block everything else
                 cir.setReturnValue(false);
             }
             // If MERGE mode and not target slot -> let vanilla logic decide
 
-        } catch (Exception e) {
-            // Fail silently to prevent crashing the game during inventory operations
-            // System.err.println("[ASC] Error in slot insert validation: " + e.getMessage());
+        } catch (Exception ignored) {
+            // Fail silently to prevent crashing the game during inventory operations.
         }
     }
 }
